@@ -109,13 +109,19 @@ with tab3:
 
     if archivo_stock is not None:
         if st.button("Procesar y Sincronizar Stock"):
-            with st.spinner("Actualizando stock..."):
+            with st.spinner("Leyendo las primeras 3 columnas del stock..."):
                 try:
                     df = pd.read_excel(archivo_stock)
-                    df = df.astype(str).replace({'nan': None, 'NaT': None, 'None': None})
-                    df = df.where(pd.notnull(df), None)
                     
-                    registros = df.to_dict(orient="records")
+                    # Seleccionamos estrictamente las primeras 3 columnas por su posición índice (0, 1 y 2)
+                    df_limpio = pd.DataFrame()
+                    df_limpio["codigo"] = df.iloc[:, 0].astype(str)
+                    df_limpio["descripcion"] = df.iloc[:, 1].astype(str)
+                    df_limpio["bultos"] = pd.to_numeric(df.iloc[:, 2], errors="coerce")
+                    
+                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
+                    registros = df_limpio.to_dict(orient="records")
+                    
                     registros_limpios = []
                     for row in registros:
                         new_row = {}
@@ -137,3 +143,4 @@ with tab3:
                         st.warning("El archivo de stock está vacío.")
                 except Exception as e:
                     st.error(f"Error crítico en stock: {e}")
+                    
