@@ -46,7 +46,8 @@ if menu == "Carga de Archivos Chess":
                         supabase.table("clientes").upsert(cliente_data).execute()
                         contador += 1
                     except Exception as e:
-                        continue
+                        st.error(f"Error detectado: {e}")
+                    break
                 st.success(f"¡Sincronización exitosa! Se procesaron {contador} clientes.")
 
     # 2. CARGA DE PRECIOS
