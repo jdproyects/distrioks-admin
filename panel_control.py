@@ -25,6 +25,8 @@ with tab1:
             with st.spinner("Leyendo y optimizando datos..."):
                 try:
                     df = pd.read_excel(archivo_clientes)
+                    # --- NUEVA LÍNEA PARA CONVERTIR FECHAS A TEXTO ---
+                    df = df.astype(str).replace({'nan': None, 'NaT': None})
                     # Convertir todo a object y reemplazar nulos/NaN por None de Python de forma segura
                     df = df.where(pd.notnull(df), None)
                     df = df.astype(object).where(df.notnull(), None)
@@ -57,6 +59,8 @@ with tab2:
             with st.spinner("Procesando lista de precios..."):
                 try:
                     df = pd.read_excel(archivo_precios)
+                    # --- NUEVA LÍNEA PARA CONVERTIR FECHAS A TEXTO ---
+                    df = df.astype(str).replace({'nan': None, 'NaT': None})
                     df = df.where(pd.notnull(df), None)
                     registros = df.to_dict(orient="records")
                     
@@ -82,6 +86,8 @@ with tab3:
             with st.spinner("Actualizando stock..."):
                 try:
                     df = pd.read_excel(archivo_stock)
+                    # --- NUEVA LÍNEA PARA CONVERTIR FECHAS A TEXTO ---
+                    df = df.astype(str).replace({'nan': None, 'NaT': None})
                     df = df.where(pd.notnull(df), None)
                     registros = df.to_dict(orient="records")
                     
