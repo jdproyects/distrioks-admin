@@ -118,6 +118,9 @@ with tab3:
                     df_limpio["codigo"] = df.iloc[:, 0].astype(str)
                     df_limpio["descripcion"] = df.iloc[:, 1].astype(str)
                     df_limpio["bultos"] = pd.to_numeric(df.iloc[:, 2], errors="coerce")
+
+                    # --- FILTRO ANTI-DUPLICADOS ---
+                    df_limpio = df_limpio.drop_duplicates(subset=["codigo"], keep="last")
                     
                     df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
                     registros = df_limpio.to_dict(orient="records")
