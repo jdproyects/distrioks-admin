@@ -24,9 +24,10 @@ with tab1:
         if st.button("Procesar y Sincronizar Clientes"):
             with st.spinner("Leyendo y filtrando columnas de Chess..."):
                 try:
+                    import numpy as np
                     df = pd.read_excel(archivo_clientes)
                     
-                    # 1. Creamos un DataFrame limpio solo con las columnas que necesitas del Excel
+                    # Creamos un DataFrame limpio solo con las 7 columnas que necesitas
                     df_limpio = pd.DataFrame()
                     df_limpio["codigo"] = df["Cliente"].astype(str)
                     df_limpio["razon_social"] = df["Razón social"].astype(str)
@@ -36,25 +37,34 @@ with tab1:
                     df_limpio["identificador"] = df["Identificador"].astype(str)
                     df_limpio["ruta_venta"] = df["Descripción Ruta Vta."].astype(str)
                     
-                    # 2. Limpieza general de nulos o valores extraños para Supabase
-                    df_limpio = df_limpio.replace({'nan': None, 'NaT': None, 'None': None})
-                    df_limpio = df_limpio.where(pd.notnull(df_limpio), None)
-                    
+                    # Reemplazamos cualquier rastro de nulos por None de Python de manera segura
+                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
                     registros = df_limpio.to_dict(orient="records")
                     
-                    if len(registros) > 0:
+                    # Limpieza final iterativa para garantizar cumplimiento JSON puro
+                    registros_limpios = []
+                    for row in registros:
+                        new_row = {}
+                        for k, v in row.items():
+                            if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
+                                new_row[k] = None
+                            else:
+                                new_row[k] = v
+                        registros_limpios.append(new_row)
+                    
+                    if len(registros_limpios) > 0:
                         with st.spinner("Subiendo registros limpios a Supabase..."):
                             batch_size = 500
-                            for i in range(0, len(registros), batch_size):
-                                lote = registros[i:i + batch_size]
+                            for i in range(0, len(registros_limpios), batch_size):
+                                lote = registros_limpios[i:i + batch_size]
                                 supabase.table("clientes").upsert(lote).execute()
                                 
-                        st.success(f"¡Sincronización exitosa! Se procesaron y guardaron {len(registros)} clientes perfectamente.")
+                        st.success(f"¡Sincronización exitosa! Se procesaron y guardaron {len(registros_limpios)} clientes perfectamente.")
                     else:
                         st.warning("El archivo Excel no contiene registros válidos.")
                 except Exception as e:
                     st.error(f"Error crítico en el proceso: {e}")
-
+                    
 # --- PESTAÑA 2: PRECIOS ---
 with tab2:
     st.subheader("Subir Lista de Precios")
