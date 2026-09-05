@@ -68,14 +68,18 @@ with tab2:
 
     if archivo_precios is not None:
         if st.button("Procesar y Sincronizar Precios"):
-            with st.spinner("Procesando lista de precios..."):
+            with st.spinner("Procesando y filtrando lista de precios..."):
                 try:
                     df = pd.read_excel(archivo_precios)
-                    # Limpieza masiva genérica para adaptación rápida a la tabla 'productos'
-                    df = df.astype(str).replace({'nan': None, 'NaT': None, 'None': None})
-                    df = df.where(pd.notnull(df), None)
                     
-                    registros = df.to_dict(orient="records")
+                    df_limpio = pd.DataFrame()
+                    df_limpio["codigo"] = df["Artículo"].astype(str)
+                    df_limpio["descripcion"] = df["Descripción.1"].astype(str)
+                    df_limpio["precio_final"] = pd.to_numeric(df["Precio Final"], errors="coerce")
+                    
+                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
+                    registros = df_limpio.to_dict(orient="records")
+                    
                     registros_limpios = []
                     for row in registros:
                         new_row = {}
@@ -97,7 +101,7 @@ with tab2:
                         st.warning("El archivo de precios está vacío.")
                 except Exception as e:
                     st.error(f"Error crítico en precios: {e}")
-
+                    
 # --- PESTAÑA 3: STOCK ---
 with tab3:
     st.subheader("Subir Stock Disponible")
