@@ -5,7 +5,7 @@ from supabase import create_client
 # Configuración de Conexión a Supabase (Tus credenciales de la API)
 SUPABASE_URL = "https://davzcefwwhgwvtzfezlh.supabase.co"
 # Nota: Para operaciones masivas desde el panel, se recomienda usar la clave service_role (o anon si no hay restricciones RLS)
-SUPABASE_KEY = "TU_SUPABASE_ANON_KEY" 
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdnpjZWZ3d2hnd3Z0emZlemxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTc2NDksImV4cCI6MjEwNDE5MzY0OX0.Gcsubn2IhWsnnXW0El02PZnTIjeRzlVds5peqMoBUPw" 
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
