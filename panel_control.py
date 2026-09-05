@@ -1,111 +1,95 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client
+from supabase import create_client, Client
 
-# Configuración de Conexión a Supabase (Tus credenciales de la API)
+# --- CONFIGURACIÓN DE SUPABASE ---
 SUPABASE_URL = "https://davzcefwwhgwvtzfezlh.supabase.co"
-# Nota: Para operaciones masivas desde el panel, se recomienda usar la clave service_role (o anon si no hay restricciones RLS)
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdnpjZWZ3d2hnd3Z0emZlemxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTc2NDksImV4cCI6MjEwNDE5MzY0OX0.Gcsubn2IhWsnnXW0El02PZnTIjeRzlVds5peqMoBUPw" 
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdnpjZWZ3d2hnd3Z0emZlemxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTc2NDksImV4cCI6MjEwNDE5MzY0OX0.Gcsubn2IhWsnnXW0El02PZnTIjeRzlVds5peqMoBUPw"  # Asegúrate de poner tu clave real aquí
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="DistriOks - Panel Controlador B2B", layout="wide")
+st.set_page_config(page_title="Panel de Control DistriOks", page_icon="🔄", layout="centered")
 
-st.title("📦 DistriOks - Panel Controlador y Backoffice")
-st.markdown("Gestión centralizada de datos desde Chess y control de operaciones en tiempo real.")
+st.markdown("<h1 style='text-align: center;'>🔄 Actualización de Datos desde Chess</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Gestión optimizada y rápida de sincronización masiva.</p>", unsafe_allow_html=True)
 
-# Menú lateral de navegación
-menu = st.sidebar.selectbox("Seleccionar Módulo", ["Carga de Archivos Chess", "Pedidos Activos B2B"])
+tab1, tab2, tab3 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible"])
 
-if menu == "Carga de Archivos Chess":
-    st.header("🔄 Actualización de Datos desde Chess")
-    st.markdown("Sube los reportes exportados para actualizar la base de datos en la nube al instante.")
+# --- PESTAÑA 1: CLIENTES ---
+with tab1:
+    st.subheader("Subir Plantilla de Clientes")
+    archivo_clientes = st.file_uploader("Selecciona el archivo Excel de Clientes", type=["xlsx", "xls"], key="cli")
 
-    tab1, tab2, tab3 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible"])
+    if archivo_clientes is not None:
+        if st.button("Procesar y Sincronizar Clientes Rápidamente"):
+            with st.spinner("Leyendo y optimizando datos..."):
+                try:
+                    df = pd.read_excel(archivo_clientes)
+                    df = df.where(pd.notnull(df), None) # Limpiar nulos para JSON
+                    
+                    # Convertir todo el dataframe a una lista de diccionarios
+                    registros = df.to_dict(orient="records")
+                    
+                    if len(registros) > 0:
+                        with st.spinner("Sincronizando de forma masiva con Supabase..."):
+                            # Inserción en bloques de 500 registros para máxima velocidad
+                            batch_size = 500
+                            for i in range(0, len(registros), batch_size):
+                                lote = registros[i:i + batch_size]
+                                supabase.table("clientes").upsert(lote).execute()
+                                
+                        st.success(f"¡Sincronización masiva exitosa! Se procesaron {len(registros)} clientes.")
+                    else:
+                        st.warning("El archivo Excel está vacío.")
+                except Exception as e:
+                    st.error(f"Error crítico en el proceso: {e}")
 
-    # 1. CARGA DE CLIENTES
-    with tab1:
-        st.subheader("Subir Plantilla de Clientes")
-        file_clientes = st.file_uploader("Selecciona el archivo Excel de Clientes", type=["xlsx"], key="cli")
-        if file_clientes and st.button("Procesar y Sincronizar Clientes"):
-            with st.spinner("Procesando clientes..."):
-                df = pd.read_excel(file_clientes, header=2) # Ajustado al formato de Chess
-                contador = 0
-                for _, row in df.iterrows():
-                    try:
-                        cliente_data = {
-                            "codigo_cliente": str(row.iloc[3]), # Columna Cliente
-                            "razon_social": str(row.iloc[5]),  # Razón social
-                            "email": str(row.iloc[10]) if pd.notna(row.iloc[10]) else "",
-                            "telefono": str(row.iloc[12]) if pd.notna(row.iloc[12]) else "",
-                            "direccion": f"{row.iloc[14]} {row.iloc[15]}", # Calle y Altura
-                            "condicion_fiscal": str(row.iloc[24]) if pd.notna(row.iloc[24]) else "",
-                            "vendedor_asignado": str(row.iloc[48]) if pd.notna(row.iloc[48]) else "",
-                            "dia_visita": str(row.iloc[51]) if pd.notna(row.iloc[51]) else "",
-                        }
-                        supabase.table("clientes").upsert(cliente_data).execute()
-                        contador += 1
-                    except Exception as e:
-                        continue
-                st.success(f"¡Sincronización exitosa! Se procesaron {contador} clientes.")
+# --- PESTAÑA 2: PRECIOS ---
+with tab2:
+    st.subheader("Subir Lista de Precios")
+    archivo_precios = st.file_uploader("Selecciona el archivo Excel de Precios", type=["xlsx", "xls"], key="pre")
 
-    # 2. CARGA DE PRECIOS
-    with tab2:
-        st.subheader("Subir Plantilla de Precios y Productos")
-        file_precios = st.file_uploader("Selecciona el archivo Excel de Precios", type=["xlsx"], key="pre")
-        if file_precios and st.button("Procesar y Sincronizar Precios"):
-            with st.spinner("Procesando precios y SKUs..."):
-                df = pd.read_excel(file_precios, header=1)
-                contador = 0
-                for _, row in df.iterrows():
-                    try:
-                        producto_data = {
-                            "codigo_sku": str(row.iloc[4]),     # Artículo
-                            "nombre": str(row.iloc[5]),         # Descripción
-                            "empaque": str(row.iloc[7]) if pd.notna(row.iloc[7]) else "UNIDAD", # Presentación
-                            "precio_final": float(row.iloc[15]) if pd.notna(row.iloc[15]) else 0.0, # Precio Final
-                            "subcategoria": "General"
-                        }
-                        supabase.table("productos").upsert(producto_data).execute()
-                        contador += 1
-                    except Exception as e:
-                        continue
-                st.success(f"¡Sincronización exitosa! Se procesaron {contador} productos/SKUs.")
+    if archivo_precios is not None:
+        if st.button("Procesar y Sincronizar Precios Rápidamente"):
+            with st.spinner("Procesando lista de precios..."):
+                try:
+                    df = pd.read_excel(archivo_precios)
+                    df = df.where(pd.notnull(df), None)
+                    registros = df.to_dict(orient="records")
+                    
+                    if len(registros) > 0:
+                        batch_size = 500
+                        for i in range(0, len(registros), batch_size):
+                            lote = registros[i:i + batch_size]
+                            supabase.table("productos").upsert(lote).execute()
+                            
+                        st.success(f"¡Precios actualizados! Se procesaron {len(registros)} registros.")
+                    else:
+                        st.warning("El archivo de precios está vacío.")
+                except Exception as e:
+                    st.error(f"Error crítico: {e}")
 
-    # 3. CARGA DE STOCK
-    with tab3:
-        st.subheader("Subir Plantilla de Stock Disponible")
-        file_stock = st.file_uploader("Selecciona el archivo Excel de Stock", type=["xlsx"], key="stk")
-        if file_stock and st.button("Procesar y Sincronizar Stock"):
-            with st.spinner("Actualizando stock en tiempo real..."):
-                df = pd.read_excel(file_stock, header=1)
-                contador = 0
-                for _, row in df.iterrows():
-                    try:
-                        stock_data = {
-                            "codigo_sku": str(row.iloc[0]),
-                            "descripcion": str(row.iloc[1]),
-                            "bultos": int(row.iloc[2]) if pd.notna(row.iloc[2]) else 0,
-                            "unidad_por_bulto": int(row.iloc[3]) if pd.notna(row.iloc[3]) else 1,
-                            "unidades": int(row.iloc[4]) if pd.notna(row.iloc[4]) else 0,
-                            "anulado": str(row.iloc[5]) if pd.notna(row.iloc[5]) else "NO"
-                        }
-                        supabase.table("stock_actual").upsert(stock_data).execute()
-                        contador += 1
-                    except Exception as e:
-                        continue
-                st.success(f"¡Stock actualizado! Se sincronizaron {contador} registros de inventario.")
+# --- PESTAÑA 3: STOCK ---
+with tab3:
+    st.subheader("Subir Stock Disponible")
+    archivo_stock = st.file_uploader("Selecciona el archivo Excel de Stock", type=["xlsx", "xls"], key="stk")
 
-elif menu == "Pedidos Activos B2B":
-    st.header("📋 Monitoreo de Pedidos B2B")
-    st.markdown("Listado de órdenes emitidas por los comercios desde la aplicación móvil.")
-
-    if st.button("Actualizar Lista de Pedidos"):
-        response = supabase.table("pedidos_b2b").select("*").execute()
-        pedidos = response.data
-        
-        if pedidos:
-            df_pedidos = pd.DataFrame(pedidos)
-            st.dataframe(df_pedidos, use_container_width=True)
-        else:
-            st.info("No hay pedidos registrados en la nube todavía.")
+    if archivo_stock is not None:
+        if st.button("Procesar y Sincronizar Stock Rápidamente"):
+            with st.spinner("Actualizando stock..."):
+                try:
+                    df = pd.read_excel(archivo_stock)
+                    df = df.where(pd.notnull(df), None)
+                    registros = df.to_dict(orient="records")
+                    
+                    if len(registros) > 0:
+                        batch_size = 500
+                        for i in range(0, len(registros), batch_size):
+                            lote = registros[i:i + batch_size]
+                            supabase.table("stock_actual").upsert(lote).execute()
+                            
+                        st.success(f"¡Stock actualizado! Se procesaron {len(registros)} registros.")
+                    else:
+                        st.warning("El archivo de stock está vacío.")
+                except Exception as e:
+                    st.error(f"Error crítico: {e}")
