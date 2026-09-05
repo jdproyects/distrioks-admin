@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 # --- CONFIGURACIÓN DE SUPABASE ---
 SUPABASE_URL = "https://davzcefwwhgwvtzfezlh.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdnpjZWZ3d2hnd3Z0emZlemxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTc2NDksImV4cCI6MjEwNDE5MzY0OX0.Gcsubn2IhWsnnXW0El02PZnTIjeRzlVds5peqMoBUPw"  # <--- REEMPLAZA CON TU CLAVE REAL
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdnpjZWZ3d2hnd3Z0emZlemxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTc2NDksImV4cCI6MjEwNDE5MzY0OX0.Gcsubn2IhWsnnXW0El02PZnTIjeRzlVds5peqMoBUPw"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -53,7 +53,7 @@ with tab1:
                             batch_size = 500
                             for i in range(0, len(registros_limpios), batch_size):
                                 lote = registros_limpios[i:i + batch_size]
-                                supabase.table("clientes").upsert(lote).execute()
+                                supabase.table("clientes").upsert(lote, on_conflict="codigo").execute()
                                 
                         st.success(f"¡Sincronización exitosa! Se procesaron {len(registros_limpios)} clientes.")
                     else:
@@ -94,7 +94,7 @@ with tab2:
                         batch_size = 500
                         for i in range(0, len(registros_limpios), batch_size):
                             lote = registros_limpios[i:i + batch_size]
-                            supabase.table("productos").upsert(lote).execute()
+                            supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
                             
                         st.success(f"¡Precios sincronizados con éxito! Se procesaron {len(registros_limpios)} productos.")
                     else:
@@ -139,11 +139,10 @@ with tab3:
                         batch_size = 500
                         for i in range(0, len(registros_limpios), batch_size):
                             lote = registros_limpios[i:i + batch_size]
-                            supabase.table("stock_actual").upsert(lote).execute()
+                            supabase.table("stock_actual").upsert(lote, on_conflict="codigo").execute()
                             
                         st.success(f"¡Stock actualizado con éxito! Se procesaron {len(registros_limpios)} registros.")
                     else:
                         st.warning("El archivo de stock está vacío.")
                 except Exception as e:
                     st.error(f"Error crítico en stock: {e}")
-                    
