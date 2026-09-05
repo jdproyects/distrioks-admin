@@ -22,33 +22,36 @@ with tab1:
 
     if archivo_clientes is not None:
         if st.button("Procesar y Sincronizar Clientes Rápidamente"):
-            with st.spinner("Leyendo y optimizando datos..."):
+            with st.spinner("Leyendo y filtrando datos limpios..."):
                 try:
+                    # skiprows=... salta las filas de título feas de Chess si las hubiera
                     df = pd.read_excel(archivo_clientes)
-                    # --- NUEVA LÍNEA PARA CONVERTIR FECHAS A TEXTO ---
+                    
+                    # AQUÍ FILTRAMOS: Selecciona solo las columnas que SÍ existen en tu tabla de Supabase
+                    # (Asegúrate de que estos nombres coincidan exactamente con las columnas de tu base de datos)
+                    columnas_deseadas = ["codigo_cliente", "razon_social", "condicion_fiscal", "direccion", "vendedor_asignado", "dia_visita"] # <--- Cambia estos nombres por los reales de tus columnas
+                    
+                    # Si el Excel tiene otros nombres, filtramos para que solo tome las que nos interesan
+                    df = df[[col for col in columnas_deseadas if col in df.columns]]
+                    
                     df = df.astype(str).replace({'nan': None, 'NaT': None})
-                    # Convertir todo a object y reemplazar nulos/NaN por None de Python de forma segura
                     df = df.where(pd.notnull(df), None)
-                    df = df.astype(object).where(df.notnull(), None)
-                    df = df.where(df.notnull(), None)
                     
                     registros = df.to_dict(orient="records")
-                    # Limpieza final de diccionarios por seguridad JSON
-                    registros = [{k: (v if pd.notnull(v) else None) for k, v in row.items()} for row in registros]
                     
                     if len(registros) > 0:
-                        with st.spinner("Sincronizando de forma masiva con Supabase..."):
+                        with st.spinner("Sincronizando con Supabase..."):
                             batch_size = 500
                             for i in range(0, len(registros), batch_size):
                                 lote = registros[i:i + batch_size]
                                 supabase.table("clientes").upsert(lote).execute()
                                 
-                        st.success(f"¡Sincronización masiva exitosa! Se procesaron {len(registros)} clientes.")
+                        st.success(f"¡Sincronización exitosa! Se procesaron {len(registros)} clientes.")
                     else:
-                        st.warning("El archivo Excel está vacío.")
+                        st.warning("No se encontraron datos válidos con las columnas especificadas.")
                 except Exception as e:
                     st.error(f"Error crítico en el proceso: {e}")
-
+                    
 # --- PESTAÑA 2: PRECIOS ---
 with tab2:
     st.subheader("Subir Lista de Precios")
