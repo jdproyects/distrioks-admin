@@ -25,14 +25,17 @@ with tab1:
             with st.spinner("Leyendo y optimizando datos..."):
                 try:
                     df = pd.read_excel(archivo_clientes)
-                    df = df.where(pd.notnull(df), None) # Limpiar nulos para JSON
+                    # Convertir todo a object y reemplazar nulos/NaN por None de Python de forma segura
+                    df = df.where(pd.notnull(df), None)
+                    df = df.astype(object).where(df.notnull(), None)
+                    df = df.where(df.notnull(), None)
                     
-                    # Convertir todo el dataframe a una lista de diccionarios
                     registros = df.to_dict(orient="records")
+                    # Limpieza final de diccionarios por seguridad JSON
+                    registros = [{k: (v if pd.notnull(v) else None) for k, v in row.items()} for row in registros]
                     
                     if len(registros) > 0:
                         with st.spinner("Sincronizando de forma masiva con Supabase..."):
-                            # Inserción en bloques de 500 registros para máxima velocidad
                             batch_size = 500
                             for i in range(0, len(registros), batch_size):
                                 lote = registros[i:i + batch_size]
