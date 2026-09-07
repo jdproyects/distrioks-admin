@@ -63,50 +63,45 @@ with tab1:
                 except Exception as e:
                     st.error(f"Error crítico en clientes: {e}")
 
-# --- PESTAÑA 2: PRECIOS ---
+# --- PESTAÑA 2: PRECIOS Y ATRIBUTOS ---
 with tab2:
-    st.subheader("Subir Lista de Precios")
-    tipo_lista = st.radio("Selecciona el tipo de lista que vas a subir:", ["Lista de Precios 1 (General)", "Lista Mayorista"])
-    archivo_precios = st.file_uploader("Selecciona el archivo Excel de Precios", type=["xlsx", "xls"], key="pre")
+    st.subheader("Subir Lista de Precios y Atributos")
+    tipo_archivo = st.radio("¿Qué archivo vas a subir?", ["Lista de Precios 1 (General)", "Lista Mayorista", "Atributos y Categorías"])
+    archivo_precios = st.file_uploader("Selecciona el archivo Excel/Tabular", type=["xlsx", "xls"], key="pre")
 
     if archivo_precios is not None:
-        if st.button("Procesar y Sincronizar Precios"):
-            with st.spinner("Procesando y filtrando lista de precios..."):
+        if st.button("Procesar y Sincronizar"):
+            with st.spinner("Procesando datos hacia Supabase..."):
                 try:
-                    df = pd.read_excel(archivo_precios)
+                    if "Atributos" in tipo_archivo:
+                        # Leer archivo de atributos (es tabulado)
+                        df = pd.read_csv(archivo_precios, sep='\t', encoding='latin-1')
+                        df_limpio = pd.DataFrame()
+                        df_limpio["codigo"] = df["CODIGO ARTICULO"].astype(str)
+                        df_limpio["categoria"] = df["DIVISION (DIVISION)"].astype(str)
+                        
+                        registros = df_limpio.to_dict(orient="records")
+                        for i in range(0, len(registros), 500):
+                            supabase.table("productos").upsert(registros[i:i+500], on_conflict="codigo").execute()
+                        st.success(f"¡Categorías actualizadas con éxito! Se procesaron {len(registros)} registros.")
                     
-                    df_limpio = pd.DataFrame()
-                    df_limpio["codigo"] = df["Artículo"].astype(str)
-                    df_limpio["descripcion"] = df["Descripción.1"].astype(str)
-                    
-                    precio_col = "precio_final_mayorista" if "Mayorista" in tipo_lista else "precio_final_lista1"
-                    df_limpio[precio_col] = pd.to_numeric(df["Precio Final"], errors="coerce")
-                    df_limpio["precio_unitario"] = pd.to_numeric(df["P.Unitario Final"], errors="coerce")
-                    
-                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
-                    registros = df_limpio.to_dict(orient="records")
-                    
-                    registros_limpios = []
-                    for row in registros:
-                        new_row = {}
-                        for k, v in row.items():
-                            if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
-                                new_row[k] = None
-                            else:
-                                new_row[k] = v
-                        registros_limpios.append(new_row)
-                    
-                    if len(registros_limpios) > 0:
-                        batch_size = 500
-                        for i in range(0, len(registros_limpios), batch_size):
-                            lote = registros_limpios[i:i + batch_size]
-                            supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
-                            
-                        st.success(f"¡Precios sincronizados con éxito! Se procesaron {len(registros_limpios)} productos ({tipo_lista}).")
                     else:
-                        st.warning("El archivo de precios está vacío.")
+                        df = pd.read_excel(archivo_precios)
+                        df_limpio = pd.DataFrame()
+                        df_limpio["codigo"] = df["Artículo"].astype(str)
+                        df_limpio["descripcion"] = df["Descripción.1"].astype(str)
+                        
+                        precio_col = "precio_final_mayorista" if "Mayorista" in tipo_archivo else "precio_final_lista1"
+                        df_limpio[precio_col] = pd.to_numeric(df["Precio Final"], errors="coerce")
+                        df_limpio["precio_unitario"] = pd.to_numeric(df["P.Unitario Final"], errors="coerce")
+                        
+                        registros = df_limpio.to_dict(orient="records")
+                        for i in range(0, len(registros), 500):
+                            supabase.table("productos").upsert(registros[i:i+500], on_conflict="codigo").execute()
+                        st.success(f"¡Precios sincronizados con éxito ({tipo_archivo})!")
+
                 except Exception as e:
-                    st.error(f"Error crítico en precios: {e}")
+                    st.error(f"Error crítico: {e}")
                     
 # --- PESTAÑA 3: STOCK ---
 with tab3:
