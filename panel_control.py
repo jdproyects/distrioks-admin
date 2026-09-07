@@ -79,12 +79,10 @@ with tab2:
                         df_limpio["codigo"] = df["CODIGO ARTICULO"].astype(str)
                         df_limpio["categoria"] = df["DIVISION (DIVISION)"].astype(str)
                         
-                        # Limpieza robusta de nulos y strings 'nan'
                         df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': ''})
                         df_limpio['categoria'] = df_limpio['categoria'].apply(lambda x: None if x in [None, '', 'nan', 'NaT'] else x)
                         
                         registros = df_limpio.to_dict(orient="records")
-                        
                         registros_limpios = []
                         for row in registros:
                             new_row = {}
@@ -100,7 +98,38 @@ with tab2:
                             supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
                             
                         st.success(f"¡Categorías actualizadas con éxito! Se procesaron {len(registros_limpios)} registros.")
+                    
+                    else:
+                        df = pd.read_excel(archivo_precios)
+                        df_limpio = pd.DataFrame()
+                        df_limpio["codigo"] = df["Artículo"].astype(str)
+                        df_limpio["descripcion"] = df["Descripción.1"].astype(str)
                         
+                        precio_col = "precio_final_mayorista" if "Mayorista" in tipo_archivo else "precio_final_lista1"
+                        df_limpio[precio_col] = pd.to_numeric(df["Precio Final"], errors="coerce")
+                        df_limpio["precio_unitario"] = pd.to_numeric(df["P.Unitario Final"], errors="coerce")
+                        
+                        df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
+                        registros = df_limpio.to_dict(orient="records")
+                        
+                        registros_limpios = []
+                        for row in registros:
+                            new_row = {}
+                            for k, v in row.items():
+                                if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
+                                    new_row[k] = None
+                                else:
+                                    new_row[k] = v
+                            registros_limpios.append(new_row)
+
+                        if len(registros_limpios) > 0:
+                            for i in range(0, len(registros_limpios), 500):
+                                lote = registros_limpios[i:i+500]
+                                supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
+                            st.success(f"¡Precios sincronizados con éxito ({tipo_archivo})! Se procesaron {len(registros_limpios)} productos.")
+                        else:
+                            st.warning("El archivo de precios está vacío.")
+
                 except Exception as e:
                     st.error(f"Error crítico: {e}")
                     
