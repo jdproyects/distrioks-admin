@@ -76,28 +76,37 @@ with tab2:
                     if "Atributos" in tipo_archivo:
                         df = pd.read_csv(archivo_precios, sep='\t', encoding='latin-1')
                         df_limpio = pd.DataFrame()
-                        df_limpio["codigo"] = df["CODIGO ARTICULO"].astype(str)
-                        df_limpio["categoria"] = df["DIVISION (DIVISION)"].astype(str)
+                        df_limpio["codigo"] = df["CODIGO ARTICULO"].astype(str).str.strip()
+                        df_limpio["categoria"] = df["DIVISION (DIVISION)"].astype(str).str.strip()
                         
-                        df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': ''})
-                        df_limpio['categoria'] = df_limpio['categoria'].apply(lambda x: None if x in [None, '', 'nan', 'NaT'] else x)
+                        # Lista de valores inválidos o vacíos a ignorar
+                        invalidos = ['', 'nan', 'None', 'NAT', 'NaN', 'NATVAL']
+                        
+                        # Filtrar estrictamente filas que tengan código y categoría válidos
+                        df_limpio = df_limpio[
+                            ~df_limpio["codigo"].str.upper().isin(invalidos) &
+                            ~df_limpio["categoria"].str.upper().isin(invalidos) &
+                            df_limpio["codigo"].notna() &
+                            df_limpio["categoria"].notna()
+                        ]
                         
                         registros = df_limpio.to_dict(orient="records")
+                        
                         registros_limpios = []
                         for row in registros:
                             new_row = {}
                             for k, v in row.items():
-                                if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
+                                if pd.isna(v) or str(v).strip().lower() in ['nan', 'none', '']:
                                     new_row[k] = None
                                 else:
-                                    new_row[k] = v
+                                    new_row[k] = str(v).strip()
                             registros_limpios.append(new_row)
 
                         for i in range(0, len(registros_limpios), 500):
                             lote = registros_limpios[i:i+500]
                             supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
                             
-                        st.success(f"¡Categorías actualizadas con éxito! Se procesaron {len(registros_limpios)} registros.")
+                        st.success(f"¡Categorías sincronizadas con éxito! Se procesaron {len(registros_limpios)} registros válidos (se ignoraron los espacios en blanco).")
                     
                     else:
                         df = pd.read_excel(archivo_precios)
