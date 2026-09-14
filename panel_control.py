@@ -73,28 +73,45 @@ with tab1:
 with tab2:
     st.subheader("Subir Lista de Precios y Atributos")
     tipo_archivo = st.radio("¿Qué archivo vas a subir?", ["Lista de Precios 1 (General)", "Lista Mayorista", "Atributos y Categorías"])
-    archivo_precios = st.file_uploader("Selecciona el archivo Excel", type=["xlsx", "xls"], key="pre")
+    archivo_precios = st.file_uploader("Selecciona el archivo Excel/Tabular", type=["xlsx", "xls", "txt", "csv"], key="pre")
 
     if archivo_precios is not None:
         if st.button("Procesar y Sincronizar"):
             with st.spinner("Procesando datos hacia Supabase..."):
                 try:
                     if "Atributos" in tipo_archivo:
-                        # Atributos: A=0 (Código), C=2 (División/Categoría)
-                        df = pd.read_excel(archivo_precios, header=None, skiprows=1)
-                        df_limpio = pd.DataFrame()
-                        df_limpio["codigo"] = df[0].astype(str).str.strip()
-                        df_limpio["categoria"] = df[2].astype(str).str.strip()
+                        # Lectura inteligente para atributos (puede ser tabular con formato .xls falso o excel real)
+                        try:
+                            df = pd.read_excel(archivo_precios, header=None, skiprows=1)
+                        except:
+                            archivo_precios.seek(0)
+                            df = pd.read_csv(archivo_precios, sep=None, engine='python', header=None, skiprows=1, encoding='latin-1')
+
+                        def safe_get_attr(row_idx, col_idx):
+                            try:
+                                val = df.iloc[row_idx, col_idx]
+                                if pd.isna(val) or str(val).strip().lower() in ['nan', 'nat', 'none', '']:
+                                    return None
+                                return str(val).strip()
+                            except:
+                                return None
+
+                        registros_limpios = []
+                        invalidos = ['', 'nan', 'none', 'nat', 'natval', 'NaN']
                         
-                        invalidos = ['', 'nan', 'None', 'NAT', 'NaN', 'NATVAL']
-                        df_limpio = df_limpio[
-                            ~df_limpio["codigo"].str.upper().isin(invalidos) &
-                            ~df_limpio["categoria"].str.upper().isin(invalidos) &
-                            df_limpio["codigo"].notna() &
-                            df_limpio["categoria"].notna()
-                        ]
-                        
-                        registros_limpios = df_limpio.to_dict(orient="records")
+                        for idx in range(len(df)):
+                            codigo = safe_get_attr(idx, 0) # Columna A = 0
+                            categoria = safe_get_attr(idx, 2) # Columna C = 2
+                            
+                            if not codigo or not categoria:
+                                continue
+                            if codigo.lower() in invalidos or categoria.lower() in invalidos:
+                                continue
+                                
+                            registros_limpios.append({
+                                "codigo": codigo,
+                                "categoria": categoria
+                            })
                         
                         if len(registros_limpios) > 0:
                             for i in range(0, len(registros_limpios), 500):
@@ -105,24 +122,41 @@ with tab2:
                             st.warning("El archivo no tiene categorías válidas.")
                     
                     else:
-                        # Precios: E=4 (cod), F=5 (desc), J=9 (unidades), P=15 (precio bulto), S=18 (precio unidad)
+                        # Listas de Precios (Excel real)
                         df = pd.read_excel(archivo_precios, header=None, skiprows=1)
-                        df_limpio = pd.DataFrame()
-                        df_limpio["codigo"] = df[4].astype(str).str.strip()
-                        df_limpio["descripcion"] = df[5].astype(str).str.strip()
                         
-                        df_limpio["unidades_por_bulto"] = pd.to_numeric(df[9], errors="coerce")
-                        
-                        precio_bulto_col = "precio_bulto_mayorista" if "Mayorista" in tipo_archivo else "precio_bulto_lista1"
-                        precio_unidad_col = "precio_unidad_mayorista" if "Mayorista" in tipo_archivo else "precio_unidad_lista1"
-                        
-                        df_limpio[precio_bulto_col] = pd.to_numeric(df[15], errors="coerce")
-                        df_limpio[precio_unidad_col] = pd.to_numeric(df[18], errors="coerce")
-                        
-                        df_limpio = df_limpio.replace({'nan': None, 'NaT': None, 'None': None, np.nan: None})
-                        df_limpio = df_limpio[df_limpio["codigo"].notna() & (df_limpio["codigo"] != 'None')]
-                        
-                        registros_limpios = df_limpio.to_dict(orient="records")
+                        def safe_get_precio(row_idx, col_idx):
+                            try:
+                                val = df.iloc[row_idx, col_idx]
+                                if pd.isna(val) or str(val).strip().lower() in ['nan', 'nat', 'none', '']:
+                                    return None
+                                return val
+                            except:
+                                return None
+
+                        registros_limpios = []
+                        for idx in range(len(df)):
+                            codigo = safe_get_precio(idx, 4) # Columna E = 4
+                            if not codigo or str(codigo).strip().lower() in ['nan', 'none', '']:
+                                continue
+                                
+                            desc = safe_get_precio(idx, 5) # Columna F = 5
+                            unidades_bulto = safe_get_precio(idx, 9) # Columna J = 9
+                            
+                            precio_bulto_idx = 15 # Columna P = 15
+                            precio_unidad_idx = 18 # Columna S = 18
+                            
+                            precio_bulto_col = "precio_bulto_mayorista" if "Mayorista" in tipo_archivo else "precio_bulto_lista1"
+                            precio_unidad_col = "precio_unidad_mayorista" if "Mayorista" in tipo_archivo else "precio_unidad_lista1"
+                            
+                            row_data = {
+                                "codigo": str(codigo).strip(),
+                                "descripcion": str(desc).strip() if desc is not None else None,
+                                "unidades_por_bulto": float(unidades_bulto) if unidades_bulto is not None else None,
+                                precio_bulto_col: float(safe_get_precio(idx, precio_bulto_idx)) if safe_get_precio(idx, precio_bulto_idx) is not None else None,
+                                precio_unidad_col: float(safe_get_precio(idx, precio_unidad_idx)) if safe_get_precio(idx, precio_unidad_idx) is not None else None,
+                            }
+                            registros_limpios.append(row_data)
 
                         if len(registros_limpios) > 0:
                             for i in range(0, len(registros_limpios), 500):
