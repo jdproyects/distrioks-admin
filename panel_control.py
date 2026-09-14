@@ -23,46 +23,49 @@ with tab1:
 
     if archivo_clientes is not None:
         if st.button("Procesar y Sincronizar Clientes"):
-            with st.spinner("Leyendo y filtrando columnas de Clientes..."):
+            with st.spinner("Leyendo y filtrando columnas de Clientes por posición..."):
                 try:
-                    df = pd.read_excel(archivo_clientes)
-                    df_limpio = pd.DataFrame()
-                    df_limpio["codigo"] = df["Cliente"].astype(str)
-                    df_limpio["razon_social"] = df["Razon social"].astype(str)
-                    df_limpio["domicilio"] = df["Domicilio"].astype(str)
-                    df_limpio["ramo"] = df["Descripcion ramo"].astype(str)
-                    df_limpio["categoria_impositiva"] = df["Descripcion categoría"].astype(str)
-                    df_limpio["cuit"] = df["Identificador"].astype(str)
-                    df_limpio["vendedor"] = df["Fuerza de venta 1 Descripcion personal comercial"].astype(str)
-                    df_limpio["dia_visita"] = df["Fuerza de venta 1 Dias de visita"].astype(str)
-                    df_limpio["lista_precios"] = df["Descripcion lista de precios"].astype(str)
+                    # header=None asigna números (0, 1, 2...) a las columnas. skiprows=1 ignora la fila 1.
+                    df = pd.read_excel(archivo_clientes, header=None, skiprows=1)
                     
-                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
+                    df_limpio = pd.DataFrame()
+                    
+                    # Mapeo de columnas: A=0, B=1, C=2, H=7, AO=40, AQ=42, AV=47, BG=58, BI=60, BJ=61, CG=84, CH=85
+                    df_limpio["codigo"] = df[1].astype(str).str.strip()               # B
+                    df_limpio["razon_social"] = df[2].astype(str).str.strip()         # C
+                    df_limpio["domicilio"] = df[7].astype(str).str.strip()            # H
+                    df_limpio["canal"] = df[40].astype(str).str.strip()               # AO
+                    df_limpio["lista_precios"] = df[42].astype(str).str.strip()       # AQ
+                    df_limpio["forma_pago"] = df[47].astype(str).str.strip()          # AV
+                    df_limpio["categoria_impositiva"] = df[58].astype(str).str.strip()# BG
+                    df_limpio["tipo_documento"] = df[60].astype(str).str.strip()      # BI
+                    df_limpio["numero_documento"] = df[61].astype(str).str.strip()    # BJ
+                    df_limpio["vendedor"] = df[84].astype(str).str.strip()            # CG
+                    df_limpio["dia_visita"] = df[85].astype(str).str.strip()          # CH
+                    
+                    # Limpieza de nulos
+                    invalidos = ['nan', 'None', 'NaT', '']
+                    df_limpio = df_limpio.replace(invalidos, None)
+                    
+                    # Filtrar filas vacías donde el código sea nulo
+                    df_limpio = df_limpio[df_limpio["codigo"].notna()]
+                    
                     registros = df_limpio.to_dict(orient="records")
                     
-                    registros_limpios = []
-                    for row in registros:
-                        new_row = {}
-                        for k, v in row.items():
-                            if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
-                                new_row[k] = None
-                            else:
-                                new_row[k] = v
-                        registros_limpios.append(new_row)
-                    
-                    if len(registros_limpios) > 0:
+                    # Insertar en Supabase
+                    if len(registros) > 0:
                         with st.spinner("Subiendo clientes a Supabase..."):
                             batch_size = 500
-                            for i in range(0, len(registros_limpios), batch_size):
-                                lote = registros_limpios[i:i + batch_size]
+                            for i in range(0, len(registros), batch_size):
+                                lote = registros[i:i + batch_size]
                                 supabase.table("clientes").upsert(lote, on_conflict="codigo").execute()
                             
-                        st.success(f"¡Sincronización exitosa! Se procesaron {len(registros_limpios)} clientes.")
+                        st.success(f"¡Sincronización exitosa! Se procesaron {len(registros)} clientes.")
                     else:
                         st.warning("El archivo Excel no contiene registros válidos.")
                 except Exception as e:
                     st.error(f"Error crítico en clientes: {e}")
-
+                    
 # --- PESTAÑA 2: PRECIOS Y ATRIBUTOS ---
 with tab2:
     st.subheader("Subir Lista de Precios y Atributos")
