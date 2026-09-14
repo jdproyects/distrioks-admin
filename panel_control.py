@@ -26,28 +26,38 @@ with tab1:
             with st.spinner("Leyendo y filtrando columnas de Clientes..."):
                 try:
                     df = pd.read_excel(archivo_clientes, header=None, skiprows=1)
-                    df_limpio = pd.DataFrame()
                     
-                    df_limpio["codigo"] = df[1].astype(str).str.strip()
-                    df_limpio["razon_social"] = df[2].astype(str).str.strip()
-                    df_limpio["domicilio"] = df[7].astype(str).str.strip()
-                    df_limpio["canal"] = df[40].astype(str).str.strip()
-                    df_limpio["lista_precios"] = df[42].astype(str).str.strip()
-                    df_limpio["forma_pago"] = df[47].astype(str).str.strip()
-                    df_limpio["categoria_impositiva"] = df[58].astype(str).str.strip()
-                    df_limpio["tipo_documento"] = df[60].astype(str).str.strip()
-                    df_limpio["numero_documento"] = df[61].astype(str).str.strip()
-                    df_limpio["vendedor"] = df[84].astype(str).str.strip()
-                    df_limpio["dia_visita"] = df[85].astype(str).str.strip()
-                    
-                    # Limpieza profunda que convierte cualquier NaN, inf o texto vacío en valor nulo real de Python (None)
-                    df_limpio = df_limpio.replace({'nan': None, 'NaT': None, 'None': None, '': None, 'inf': None, '-inf': None})
-                    df_limpio = df_limpio.where(pd.notnull(df_limpio), None)
-                    
-                    df_limpio = df_limpio[df_limpio["codigo"].notna() & (df_limpio["codigo"] != 'None') & (df_limpio["codigo"] != 'nan')]
-                    
-                    registros_limpios = df_limpio.to_dict(orient="records")
-                    
+                    # Función para extraer celdas de forma segura evitando errores de índices y NaNs
+                    def safe_get(row_idx, col_idx):
+                        try:
+                            val = df.iloc[row_idx, col_idx]
+                            if pd.isna(val) or str(val).strip().lower() in ['nan', 'nat', 'none', '']:
+                                return None
+                            return str(val).strip()
+                        except:
+                            return None
+
+                    registros_limpios = []
+                    for idx in range(len(df)):
+                        codigo = safe_get(idx, 1) # Columna B (Índice 1)
+                        if not codigo:
+                            continue # Si no tiene código, se ignora la fila
+                        
+                        row_data = {
+                            "codigo": codigo,
+                            "razon_social": safe_get(idx, 2),        # C = 2
+                            "domicilio": safe_get(idx, 7),           # H = 7
+                            "canal": safe_get(idx, 40),              # AO = 40
+                            "lista_precios": safe_get(idx, 42),      # AQ = 42
+                            "forma_pago": safe_get(idx, 47),         # AV = 47
+                            "categoria_impositiva": safe_get(idx, 58), # BG = 58
+                            "tipo_documento": safe_get(idx, 60),     # BI = 60
+                            "numero_documento": safe_get(idx, 61),    # BJ = 61
+                            "vendedor": safe_get(idx, 84),           # CG = 84
+                            "dia_visita": safe_get(idx, 85)          # CH = 85
+                        }
+                        registros_limpios.append(row_data)
+
                     if len(registros_limpios) > 0:
                         batch_size = 500
                         for i in range(0, len(registros_limpios), batch_size):
