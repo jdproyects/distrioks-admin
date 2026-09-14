@@ -70,22 +70,20 @@ with tab1:
 with tab2:
     st.subheader("Subir Lista de Precios y Atributos")
     tipo_archivo = st.radio("¿Qué archivo vas a subir?", ["Lista de Precios 1 (General)", "Lista Mayorista", "Atributos y Categorías"])
-    archivo_precios = st.file_uploader("Selecciona el archivo Excel/Tabular", type=["xlsx", "xls"], key="pre")
+    archivo_precios = st.file_uploader("Selecciona el archivo Excel", type=["xlsx", "xls"], key="pre")
 
     if archivo_precios is not None:
         if st.button("Procesar y Sincronizar"):
             with st.spinner("Procesando datos hacia Supabase..."):
                 try:
                     if "Atributos" in tipo_archivo:
-                        df = pd.read_csv(archivo_precios, sep='\t', encoding='latin-1')
+                        # Atributos: A=0 (Código), C=2 (División/Categoría)
+                        df = pd.read_excel(archivo_precios, header=None, skiprows=1)
                         df_limpio = pd.DataFrame()
-                        df_limpio["codigo"] = df["CODIGO ARTICULO"].astype(str).str.strip()
-                        df_limpio["categoria"] = df["DIVISION (DIVISION)"].astype(str).str.strip()
+                        df_limpio["codigo"] = df[0].astype(str).str.strip()
+                        df_limpio["categoria"] = df[2].astype(str).str.strip()
                         
-                        # Lista de valores inválidos o vacíos a ignorar
                         invalidos = ['', 'nan', 'None', 'NAT', 'NaN', 'NATVAL']
-                        
-                        # Filtrar estrictamente filas que tengan código y categoría válidos
                         df_limpio = df_limpio[
                             ~df_limpio["codigo"].str.upper().isin(invalidos) &
                             ~df_limpio["categoria"].str.upper().isin(invalidos) &
@@ -93,54 +91,43 @@ with tab2:
                             df_limpio["categoria"].notna()
                         ]
                         
-                        registros = df_limpio.to_dict(orient="records")
+                        registros_limpios = df_limpio.to_dict(orient="records")
                         
-                        registros_limpios = []
-                        for row in registros:
-                            new_row = {}
-                            for k, v in row.items():
-                                if pd.isna(v) or str(v).strip().lower() in ['nan', 'none', '']:
-                                    new_row[k] = None
-                                else:
-                                    new_row[k] = str(v).strip()
-                            registros_limpios.append(new_row)
-
-                        for i in range(0, len(registros_limpios), 500):
-                            lote = registros_limpios[i:i+500]
-                            supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
-                            
-                        st.success(f"¡Categorías sincronizadas con éxito! Se procesaron {len(registros_limpios)} registros válidos (se ignoraron los espacios en blanco).")
+                        if len(registros_limpios) > 0:
+                            for i in range(0, len(registros_limpios), 500):
+                                lote = registros_limpios[i:i+500]
+                                supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
+                            st.success(f"¡Categorías sincronizadas! Se procesaron {len(registros_limpios)} registros válidos.")
+                        else:
+                            st.warning("El archivo no tiene categorías válidas.")
                     
                     else:
-                        df = pd.read_excel(archivo_precios)
+                        # Precios: E=4 (cod), F=5 (desc), J=9 (unidades), P=15 (precio bulto), S=18 (precio unidad)
+                        df = pd.read_excel(archivo_precios, header=None, skiprows=1)
                         df_limpio = pd.DataFrame()
-                        df_limpio["codigo"] = df["Artículo"].astype(str)
-                        df_limpio["descripcion"] = df["Descripción.1"].astype(str)
+                        df_limpio["codigo"] = df[4].astype(str).str.strip()
+                        df_limpio["descripcion"] = df[5].astype(str).str.strip()
                         
-                        precio_col = "precio_final_mayorista" if "Mayorista" in tipo_archivo else "precio_final_lista1"
-                        df_limpio[precio_col] = pd.to_numeric(df["Precio Final"], errors="coerce")
-                        df_limpio["precio_unitario"] = pd.to_numeric(df["P.Unitario Final"], errors="coerce")
+                        df_limpio["unidades_por_bulto"] = pd.to_numeric(df[9], errors="coerce")
                         
-                        df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': None})
-                        registros = df_limpio.to_dict(orient="records")
+                        precio_bulto_col = "precio_bulto_mayorista" if "Mayorista" in tipo_archivo else "precio_bulto_lista1"
+                        precio_unidad_col = "precio_unidad_mayorista" if "Mayorista" in tipo_archivo else "precio_unidad_lista1"
                         
-                        registros_limpios = []
-                        for row in registros:
-                            new_row = {}
-                            for k, v in row.items():
-                                if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
-                                    new_row[k] = None
-                                else:
-                                    new_row[k] = v
-                            registros_limpios.append(new_row)
+                        df_limpio[precio_bulto_col] = pd.to_numeric(df[15], errors="coerce")
+                        df_limpio[precio_unidad_col] = pd.to_numeric(df[18], errors="coerce")
+                        
+                        df_limpio = df_limpio.replace({'nan': None, 'NaT': None, 'None': None, np.nan: None})
+                        df_limpio = df_limpio[df_limpio["codigo"].notna() & (df_limpio["codigo"] != 'None')]
+                        
+                        registros_limpios = df_limpio.to_dict(orient="records")
 
                         if len(registros_limpios) > 0:
                             for i in range(0, len(registros_limpios), 500):
                                 lote = registros_limpios[i:i+500]
                                 supabase.table("productos").upsert(lote, on_conflict="codigo").execute()
-                            st.success(f"¡Precios sincronizados con éxito ({tipo_archivo})! Se procesaron {len(registros_limpios)} productos.")
+                            st.success(f"¡Precios sincronizados ({tipo_archivo})! Procesados {len(registros_limpios)} productos.")
                         else:
-                            st.warning("El archivo de precios está vacío.")
+                            st.warning("El archivo de precios está vacío o es inválido.")
 
                 except Exception as e:
                     st.error(f"Error crítico: {e}")
@@ -152,32 +139,20 @@ with tab3:
 
     if archivo_stock is not None:
         if st.button("Procesar y Sincronizar Stock"):
-            with st.spinner("Leyendo stock y presentaciones..."):
+            with st.spinner("Leyendo stock (Col A, C y D)..."):
                 try:
-                    df = pd.read_excel(archivo_stock)
+                    # Stock: A=0 (Código), C=2 (Bultos), D=3 (Unidades)
+                    df = pd.read_excel(archivo_stock, header=None, skiprows=1)
                     
                     df_limpio = pd.DataFrame()
-                    df_limpio["codigo"] = df["Código Artículo"].astype(str)
-                    df_limpio["descripcion"] = df["Descripción"].astype(str)
-                    df_limpio["bultos"] = pd.to_numeric(df["Bultos"], errors="coerce")
-                    df_limpio["unidades"] = pd.to_numeric(df["Unidades"], errors="coerce")
-                    df_limpio["presentacion_bulto"] = df["Presentación Bulto"].astype(str)
-                    df_limpio["presentacion_unidad"] = df["Presentación Unidad"].astype(str)
+                    df_limpio["codigo"] = df[0].astype(str).str.strip()
+                    df_limpio["bultos"] = pd.to_numeric(df[2], errors="coerce").fillna(0)
+                    df_limpio["unidades"] = pd.to_numeric(df[3], errors="coerce").fillna(0)
 
                     df_limpio = df_limpio.drop_duplicates(subset=["codigo"], keep="last")
+                    df_limpio = df_limpio[df_limpio["codigo"].notna() & (df_limpio["codigo"] != 'None') & (df_limpio["codigo"] != 'nan')]
                     
-                    df_limpio = df_limpio.replace({np.nan: None, 'nan': None, 'NaT': None, 'None': 'nan'})
-                    registros = df_limpio.to_dict(orient="records")
-                    
-                    registros_limpios = []
-                    for row in registros:
-                        new_row = {}
-                        for k, v in row.items():
-                            if pd.isna(v) or v in ['nan', 'NaT', 'None', '']:
-                                new_row[k] = None
-                            else:
-                                new_row[k] = v
-                        registros_limpios.append(new_row)
+                    registros_limpios = df_limpio.to_dict(orient="records")
                     
                     if len(registros_limpios) > 0:
                         batch_size = 500
@@ -185,8 +160,9 @@ with tab3:
                             lote = registros_limpios[i:i + batch_size]
                             supabase.table("stock_actual").upsert(lote, on_conflict="codigo").execute()
                             
-                        st.success(f"¡Stock actualizado con éxito! Se procesaron {len(registros_limpios)} registros.")
+                        st.success(f"¡Stock actualizado con éxito! Se procesaron {len(registros_limpios)} artículos.")
                     else:
                         st.warning("El archivo de stock está vacío.")
                 except Exception as e:
                     st.error(f"Error crítico en stock: {e}")
+                    
