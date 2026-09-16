@@ -15,7 +15,7 @@ st.set_page_config(page_title="Panel de Control DistriOks", page_icon="🔄", la
 st.markdown("<h1 style='text-align: center;'>🔄 Actualización de Datos desde Chess</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Gestión inteligente y sincronización masiva hacia Supabase.</p>", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible", "Promociones"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible", "Promociones", "Sincronizar Reglas de Descuento por Lote/Marca"])
 
 # --- PESTAÑA 1: CLIENTES ---
 with tab1:
