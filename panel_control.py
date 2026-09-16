@@ -240,3 +240,51 @@ with tab4:
                     st.success(f"¡{exitos} promociones subidas con éxito! Ya deberían aparecer en la App.")
         else:
             st.warning("Por favor, selecciona al menos una imagen primero.")
+
+# --- PESTAÑA 5: REGLAS DE DESCUENTO ---
+with tab5:
+    st.subheader("Sincronizar Reglas de Descuento por Lote/Marca")
+    st.markdown("""
+    Sube un archivo Excel con las siguientes columnas exactas:
+    1. **tipo_regla** (Ej: `UN_CODIGO`, `MARCA`, `COMBINADOS`)
+    2. **filtro** (Ej: `930`, `TRIO`, o códigos separados por coma `801,805,810`)
+    3. **cantidad_minima** (Número mínimo de unidades/bultos para activar)
+    4. **porcentaje_descuento** (Ej: `16.2` o `6.0`)
+    5. **nombre_promo** (Texto descriptivo que verá el cliente)
+    """)
+
+    archivo_descuentos = st.file_uploader("Selecciona el Excel de Descuentos", type=["xlsx", "xls"], key="desc")
+
+    if archivo_descuentos is not None:
+        if st.button("Procesar y Sincronizar Descuentos"):
+            with st.spinner("Leyendo reglas de descuento..."):
+                try:
+                    df_desc = pd.read_excel(archivo_descuentos)
+                    
+                    reglas_limpias = []
+                    for idx, row in df_desc.iterrows():
+                        tipo = str(row.get('tipo_regla', '')).strip().upper()
+                        filtro = str(row.get('filtro', '')).strip()
+                        cant_min = row.get('cantidad_minima', 0)
+                        porc = row.get('porcentaje_descuento', 0)
+                        nombre = str(row.get('nombre_promo', 'Promoción')).strip()
+
+                        if not tipo or not filtro or pd.isna(cant_min) or pd.isna(porc):
+                            continue
+
+                        reglas_limpias.append({
+                            "tipo_regla": tipo,
+                            "filtro": filtro,
+                            "cantidad_minima": float(cant_min),
+                            "porcentaje_descuento": float(porc),
+                            "nombre_promo": nombre
+                        })
+
+                    if len(reglas_limpias) > 0:
+                        supabase.table("reglas_descuentos").delete().neq("id", 0).execute()
+                        supabase.table("reglas_descuentos").insert(reglas_limpias).execute()
+                        st.success(f"¡Sincronización exitosa! Se cargaron {len(reglas_limpias)} reglas de descuento.")
+                    else:
+                        st.warning("El archivo no contiene reglas de descuento válidas o faltan columnas.")
+                except Exception as e:
+                    st.error(f"Error crítico al procesar descuentos: {e}")
