@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from supabase import create_client, Client
+import time
 
 # --- CONFIGURACIÓN DE SUPABASE ---
 SUPABASE_URL = "https://davzcefwwhgwvtzfezlh.supabase.co"
@@ -14,7 +15,7 @@ st.set_page_config(page_title="Panel de Control DistriOks", page_icon="🔄", la
 st.markdown("<h1 style='text-align: center;'>🔄 Actualización de Datos desde Chess</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>Gestión inteligente y sincronización masiva hacia Supabase.</p>", unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible"])
+tab1, tab2, tab3, tab4 = st.tabs(["Maestro de Clientes", "Lista de Precios", "Stock Disponible", "Promociones"])
 
 # --- PESTAÑA 1: CLIENTES ---
 with tab1:
@@ -27,7 +28,6 @@ with tab1:
                 try:
                     df = pd.read_excel(archivo_clientes, header=None, skiprows=1)
                     
-                    # Función para extraer celdas de forma segura evitando errores de índices y NaNs
                     def safe_get(row_idx, col_idx):
                         try:
                             val = df.iloc[row_idx, col_idx]
@@ -39,22 +39,22 @@ with tab1:
 
                     registros_limpios = []
                     for idx in range(len(df)):
-                        codigo = safe_get(idx, 1) # Columna B (Índice 1)
+                        codigo = safe_get(idx, 1)
                         if not codigo:
-                            continue # Si no tiene código, se ignora la fila
+                            continue
                         
                         row_data = {
                             "codigo": codigo,
-                            "razon_social": safe_get(idx, 2),        # C = 2
-                            "domicilio": safe_get(idx, 7),           # H = 7
-                            "canal": safe_get(idx, 40),              # AO = 40
-                            "lista_precios": safe_get(idx, 42),      # AQ = 42
-                            "forma_pago": safe_get(idx, 47),         # AV = 47
-                            "categoria_impositiva": safe_get(idx, 58), # BG = 58
-                            "tipo_documento": safe_get(idx, 60),     # BI = 60
-                            "numero_documento": safe_get(idx, 61),    # BJ = 61
-                            "vendedor": safe_get(idx, 84),           # CG = 84
-                            "dia_visita": safe_get(idx, 85)          # CH = 85
+                            "razon_social": safe_get(idx, 2),
+                            "domicilio": safe_get(idx, 7),
+                            "canal": safe_get(idx, 40),
+                            "lista_precios": safe_get(idx, 42),
+                            "forma_pago": safe_get(idx, 47),
+                            "categoria_impositiva": safe_get(idx, 58),
+                            "tipo_documento": safe_get(idx, 60),
+                            "numero_documento": safe_get(idx, 61),
+                            "vendedor": safe_get(idx, 84),
+                            "dia_visita": safe_get(idx, 85)
                         }
                         registros_limpios.append(row_data)
 
@@ -80,7 +80,6 @@ with tab2:
             with st.spinner("Procesando datos hacia Supabase..."):
                 try:
                     if "Atributos" in tipo_archivo:
-                        # Lectura inteligente para atributos (puede ser tabular con formato .xls falso o excel real)
                         try:
                             df = pd.read_excel(archivo_precios, header=None, skiprows=1)
                         except:
@@ -100,8 +99,8 @@ with tab2:
                         invalidos = ['', 'nan', 'none', 'nat', 'natval', 'NaN']
                         
                         for idx in range(len(df)):
-                            codigo = safe_get_attr(idx, 0) # Columna A = 0
-                            categoria = safe_get_attr(idx, 2) # Columna C = 2
+                            codigo = safe_get_attr(idx, 0)
+                            categoria = safe_get_attr(idx, 2)
                             
                             if not codigo or not categoria:
                                 continue
@@ -122,7 +121,6 @@ with tab2:
                             st.warning("El archivo no tiene categorías válidas.")
                     
                     else:
-                        # Listas de Precios (Excel real)
                         df = pd.read_excel(archivo_precios, header=None, skiprows=1)
                         
                         def safe_get_precio(row_idx, col_idx):
@@ -136,15 +134,15 @@ with tab2:
 
                         registros_limpios = []
                         for idx in range(len(df)):
-                            codigo = safe_get_precio(idx, 4) # Columna E = 4
+                            codigo = safe_get_precio(idx, 4)
                             if not codigo or str(codigo).strip().lower() in ['nan', 'none', '']:
                                 continue
                                 
-                            desc = safe_get_precio(idx, 5) # Columna F = 5
-                            unidades_bulto = safe_get_precio(idx, 9) # Columna J = 9
+                            desc = safe_get_precio(idx, 5)
+                            unidades_bulto = safe_get_precio(idx, 9)
                             
-                            precio_bulto_idx = 15 # Columna P = 15
-                            precio_unidad_idx = 18 # Columna S = 18
+                            precio_bulto_idx = 15
+                            precio_unidad_idx = 18
                             
                             precio_bulto_col = "precio_bulto_mayorista" if "Mayorista" in tipo_archivo else "precio_bulto_lista1"
                             precio_unidad_col = "precio_unidad_mayorista" if "Mayorista" in tipo_archivo else "precio_unidad_lista1"
@@ -178,7 +176,6 @@ with tab3:
         if st.button("Procesar y Sincronizar Stock"):
             with st.spinner("Leyendo stock (Col A, C y D)..."):
                 try:
-                    # Stock: A=0 (Código), C=2 (Bultos), D=3 (Unidades)
                     df = pd.read_excel(archivo_stock, header=None, skiprows=1)
                     
                     df_limpio = pd.DataFrame()
@@ -202,4 +199,38 @@ with tab3:
                         st.warning("El archivo de stock está vacío.")
                 except Exception as e:
                     st.error(f"Error crítico en stock: {e}")
-                    
+
+# --- PESTAÑA 4: PROMOCIONES ---
+with tab4:
+    st.subheader("Subir Novedades y Promociones")
+    st.write("Sube imágenes para que aparezcan en la pantalla principal de la app.")
+
+    archivo_imagen = st.file_uploader("Selecciona una imagen (JPG o PNG)", type=['jpg', 'jpeg', 'png'], key="promo")
+
+    if st.button("Subir Promoción"):
+        if archivo_imagen is not None:
+            with st.spinner("Subiendo imagen a la nube..."):
+                try:
+                    bytes_data = archivo_imagen.getvalue()
+                    nombre_unico = f"{int(time.time())}_{archivo_imagen.name}"
+
+                    # Subir físicamente a Supabase
+                    res = supabase.storage.from_('promos').upload(
+                        file=bytes_data,
+                        path=nombre_unico,
+                        file_options={"content-type": archivo_imagen.type}
+                    )
+
+                    # Obtener link público
+                    url_publica = supabase.storage.from_('promos').get_public_url(nombre_unico)
+
+                    # Guardar link en la tabla
+                    supabase.table('promociones').insert({"imagen_url": url_publica}).execute()
+
+                    st.success("¡Promoción subida con éxito! Ya debería aparecer en la App.")
+                    st.image(url_publica, width=300)
+
+                except Exception as e:
+                    st.error(f"Ocurrió un error al subir la imagen: {e}")
+        else:
+            st.warning("Por favor, selecciona una imagen primero.")
