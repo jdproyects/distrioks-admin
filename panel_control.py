@@ -205,32 +205,40 @@ with tab4:
     st.subheader("Subir Novedades y Promociones")
     st.write("Sube imágenes para que aparezcan en la pantalla principal de la app.")
 
-    archivo_imagen = st.file_uploader("Selecciona una imagen (JPG o PNG)", type=['jpg', 'jpeg', 'png'], key="promo")
+    # AGREGADO: accept_multiple_files=True permite seleccionar varias fotos
+    archivos_imagenes = st.file_uploader("Selecciona imágenes (JPG o PNG)", type=['jpg', 'jpeg', 'png'], key="promo", accept_multiple_files=True)
 
-    if st.button("Subir Promoción"):
-        if archivo_imagen is not None:
-            with st.spinner("Subiendo imagen a la nube..."):
-                try:
-                    bytes_data = archivo_imagen.getvalue()
-                    nombre_unico = f"{int(time.time())}_{archivo_imagen.name}"
+    if st.button("Subir Promociones"):
+        if archivos_imagenes and len(archivos_imagenes) > 0:
+            with st.spinner(f"Subiendo {len(archivos_imagenes)} imágenes a la nube..."):
+                exitos = 0
+                # Recorremos cada imagen seleccionada y la subimos una por una
+                for archivo in archivos_imagenes:
+                    try:
+                        bytes_data = archivo.getvalue()
+                        nombre_unico = f"{int(time.time())}_{archivo.name}"
 
-                    # Subir físicamente a Supabase
-                    res = supabase.storage.from_('promos').upload(
-                        file=bytes_data,
-                        path=nombre_unico,
-                        file_options={"content-type": archivo_imagen.type}
-                    )
+                        # Subir físicamente a Supabase
+                        supabase.storage.from_('promos').upload(
+                            file=bytes_data,
+                            path=nombre_unico,
+                            file_options={"content-type": archivo.type}
+                        )
 
-                    # Obtener link público
-                    url_publica = supabase.storage.from_('promos').get_public_url(nombre_unico)
+                        # Obtener link público
+                        url_publica = supabase.storage.from_('promos').get_public_url(nombre_unico)
 
-                    # Guardar link en la tabla
-                    supabase.table('promociones').insert({"imagen_url": url_publica}).execute()
+                        # Guardar link en la tabla
+                        supabase.table('promociones').insert({"imagen_url": url_publica}).execute()
+                        exitos += 1
+                        
+                        # Mostramos una miniatura pequeñita de cada foto que se subió bien
+                        st.image(url_publica, width=150, caption=f"Subida: {archivo.name}")
 
-                    st.success("¡Promoción subida con éxito! Ya debería aparecer en la App.")
-                    st.image(url_publica, width=300)
-
-                except Exception as e:
-                    st.error(f"Ocurrió un error al subir la imagen: {e}")
+                    except Exception as e:
+                        st.error(f"Error al subir {archivo.name}: {e}")
+                        
+                if exitos > 0:
+                    st.success(f"¡{exitos} promociones subidas con éxito! Ya deberían aparecer en la App.")
         else:
-            st.warning("Por favor, selecciona una imagen primero.")
+            st.warning("Por favor, selecciona al menos una imagen primero.")
