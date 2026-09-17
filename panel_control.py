@@ -27,72 +27,177 @@ menu = st.sidebar.radio(
 # ==========================================
 # PANTALLA 1: GESTIÓN DE PEDIDOS
 # ==========================================
+# ==========================================
+# PANTALLA 1: GESTIÓN DE PEDIDOS (TIPO CHESS ERP)
+# ==========================================
 if menu == "📦 Gestión de Pedidos":
-    st.title("📦 Bandeja de Pedidos")
-    st.write("Administra los pedidos entrantes de la App y actualiza su estado.")
+    st.title("📦 Controles y Ajustes de Pedidos")
     
-    # Obtener pedidos desde Supabase (ordenados del más nuevo al más viejo)
-    response = supabase.table('pedidos').select('*').order('created_at', desc=True).execute()
-    pedidos = response.data
+    # 1. Obtener pedidos desde Supabase
+    res_pedidos = supabase.table('pedidos').select('*').order('created_at', desc=True).execute()
+    pedidos_raw = res_pedidos.data
     
-    if not pedidos:
+    if not pedidos_raw:
         st.info("No hay pedidos registrados en la base de datos.")
     else:
-        # Dividimos la pantalla en 2 columnas (Izquierda: Lista, Derecha: Detalle)
-        col_lista, col_detalle = st.columns([1, 2])
-        
-        with col_lista:
-            st.subheader("Lista de Pedidos")
-            # Crear un diccionario para el selectbox
-            opciones = {}
-            for p in pedidos:
-                # Mostramos ID, Código de Cliente y Estado en la lista
-                label = f"#{p.get('id', 'N/A')} | Cód: {p.get('cliente_codigo', '')} | {p.get('estado', '')}"
-                opciones[label] = p
-                
-            seleccion_label = st.selectbox("Selecciona un pedido para ver el detalle:", list(opciones.keys()))
-            pedido_actual = opciones[seleccion_label]
-            
-        with col_detalle:
-            st.subheader(f"Detalle del Pedido #{pedido_actual.get('id')}")
-            
-            # --- SECCIÓN DE CAMBIO DE ESTADO ---
-            st.markdown("### 🔄 Actualizar Estado")
-            estado_actual = pedido_actual.get('estado', 'En Preparación')
-            lista_estados = ['En Preparación', 'En Reparto', 'Entregado', 'Cancelado', 'Rechazado']
-            
-            # Para que el selectbox seleccione por defecto el estado actual
-            index_estado = lista_estados.index(estado_actual) if estado_actual in lista_estados else 0
-            
-            nuevo_estado = st.selectbox("Estado del pedido en la App:", lista_estados, index=index_estado)
-            
-            if st.button("Guardar Nuevo Estado", type="primary"):
-                try:
-                    supabase.table('pedidos').update({'estado': nuevo_estado}).eq('id', pedido_actual['id']).execute()
-                    st.success(f"¡Estado actualizado a '{nuevo_estado}' con éxito! El cliente ya lo ve en su App.")
-                    st.rerun() # Recarga la pantalla para mostrar los cambios
-                except Exception as e:
-                    st.error(f"Error al actualizar: {e}")
-                    
-            st.divider()
-            
-            # --- RESUMEN DEL PEDIDO PARA IMPRIMIR ---
-            st.markdown("### 📄 Resumen de Compra")
-            st.write(f"**Cliente Cód:** {pedido_actual.get('cliente_codigo')}")
-            st.write(f"**Fecha de Creación:** {pedido_actual.get('created_at')[:10]}")
-            st.write(f"**Fecha de Entrega Solicitada:** {pedido_actual.get('fecha_entrega', 'No especificada')}")
-            
-            # Tabla de Items
-            items = pedido_actual.get('items', [])
-            if items:
-                df_items = pd.DataFrame(items)
-                if 'precio' in df_items.columns and 'cantidad' in df_items.columns:
-                    df_items['subtotal'] = df_items['precio'] * df_items['cantidad']
-                st.dataframe(df_items, use_container_width=True)
-            
-            st.markdown(f"## TOTAL: $ {pedido_actual.get('total', 0):,.2f}")
-            st.info("💡 Para imprimir este pedido, presiona **Ctrl + P** (o Cmd + P en Mac) en tu teclado.")
+        # 2. Obtener clientes para cruzar el vendedor y la razón social
+        res_clientes = supabase.table('clientes').select('codigo, razon_social, vendedor').execute()
+        dict_clientes = {str(c['codigo']): c for c in res_clientes.data}
 
+        # 3. Preparar el DataFrame principal
+        for p in pedidos_raw:
+            # Extraer fecha limpia (YYYY-MM-DD)
+            p['Fecha'] = str(p.get('created_at', ''))[:10]
+            # Cruzar datos del cliente
+            cod_cliente = str(p.get('cliente_codigo', ''))
+            datos_cli = dict_clientes.get(cod_cliente, {})
+            p['Cliente'] = f"{cod_cliente} - {datos_cli.get('razon_social', 'Desconocido')}"
+            p['Vendedor'] = datos_cli.get('vendedor', 'Sin Vendedor Asignado')
+            
+            # Calcular bultos y unidades totales del pedido
+            bultos_totales = 0
+            unidades_totales = 0
+            for item in p.get('items', []):
+                cant = float(item.get('cantidad', 0))
+                if str(item.get('tipo', '')).lower() == 'bulto':
+                    bultos_totales += cant
+                else:
+                    unidades_totales += cant
+            
+            p['Bultos'] = bultos_totales
+            p['Unidades'] = unidades_totales
+            p['Final'] = float(p.get('total', 0))
+
+        df_pedidos = pd.DataFrame(pedidos_raw)
+
+        # ---------------------------------------------------------
+        # BREADCRUMBS Y FILTROS EN CASCADA (TIPO CHESS)
+        # ---------------------------------------------------------
+        col1, col2, col3 = st.columns(3)
+        
+        # Nivel 1: Filtro por Fecha
+        fechas_disponibles = sorted(df_pedidos['Fecha'].unique(), reverse=True)
+        with col1:
+            fecha_sel = st.selectbox("📅 1) Fecha", ["Todas las Fechas"] + list(fechas_disponibles))
+        
+        # Filtrar DF por fecha
+        if fecha_sel != "Todas las Fechas":
+            df_pedidos = df_pedidos[df_pedidos['Fecha'] == fecha_sel]
+            
+        # Nivel 2: Filtro por Vendedor
+        vendedores_disponibles = sorted(df_pedidos['Vendedor'].unique())
+        with col2:
+            vendedor_sel = st.selectbox("👤 2) Vendedor", ["Todos los Vendedores"] + list(vendedores_disponibles))
+            
+        # Filtrar DF por vendedor
+        if vendedor_sel != "Todos los Vendedores":
+            df_pedidos = df_pedidos[df_pedidos['Vendedor'] == vendedor_sel]
+            
+        # Nivel 3: Seleccionar Cliente/Pedido específico para ver detalle
+        with col3:
+            # Crear lista para el selector final
+            opciones_pedido = ["Seleccione un pedido para ver el detalle..."]
+            for idx, row in df_pedidos.iterrows():
+                opciones_pedido.append(f"Ped #{row['id']} | {row['Cliente']} | {row['estado']}")
+                
+            pedido_sel_str = st.selectbox("🛒 3) Pedido / Cliente", opciones_pedido)
+
+        st.divider()
+
+        # ---------------------------------------------------------
+        # VISTA DE RESUMEN (Grilla similar a Chess)
+        # ---------------------------------------------------------
+        if pedido_sel_str == "Seleccione un pedido para ver el detalle...":
+            st.subheader(f"Resumen de Subtotales")
+            
+            # Agrupar dependiendo de los filtros seleccionados
+            if fecha_sel == "Todas las Fechas":
+                agrupado = df_pedidos.groupby('Fecha').agg({
+                    'id': 'count', 
+                    'Bultos': 'sum', 
+                    'Unidades': 'sum', 
+                    'Final': 'sum'
+                }).reset_index()
+                agrupado.rename(columns={'id': 'Cant. Pedidos', 'Fecha': 'Selección'}, inplace=True)
+                
+            elif vendedor_sel == "Todos los Vendedores":
+                agrupado = df_pedidos.groupby('Vendedor').agg({
+                    'id': 'count', 
+                    'Bultos': 'sum', 
+                    'Unidades': 'sum', 
+                    'Final': 'sum'
+                }).reset_index()
+                agrupado.rename(columns={'id': 'Cant. Pedidos', 'Vendedor': 'Selección'}, inplace=True)
+                
+            else:
+                # Mostrar lista de clientes si ya seleccionó fecha y vendedor
+                agrupado = df_pedidos[['Cliente', 'id', 'Bultos', 'Unidades', 'Final', 'estado']].copy()
+                agrupado.rename(columns={'id': 'Pedido #', 'Cliente': 'Selección', 'estado': 'Estado'}, inplace=True)
+
+            # Fila de Totales Generales
+            totales = pd.DataFrame([{
+                'Selección': 'TOTALES',
+                'Cant. Pedidos' if 'Cant. Pedidos' in agrupado.columns else 'Pedido #': len(df_pedidos),
+                'Bultos': df_pedidos['Bultos'].sum(),
+                'Unidades': df_pedidos['Unidades'].sum(),
+                'Final': df_pedidos['Final'].sum()
+            }])
+            
+            agrupado_final = pd.concat([agrupado, totales], ignore_index=True)
+            
+            # Formatear montos para la tabla visual
+            agrupado_final['Final'] = agrupado_final['Final'].apply(lambda x: f"$ {x:,.2f}" if pd.notnull(x) else "")
+            
+            st.dataframe(agrupado_final, use_container_width=True, hide_index=True)
+
+        # ---------------------------------------------------------
+        # VISTA DE DETALLE DE PEDIDO Y ACCIONES
+        # ---------------------------------------------------------
+        else:
+            # Extraer el ID del string seleccionado (ej: "Ped #15 | 123 - JUAN | En Preparación")
+            id_seleccionado = int(pedido_sel_str.split('|')[0].replace("Ped #", "").strip())
+            pedido_actual = df_pedidos[df_pedidos['id'] == id_seleccionado].iloc[0].to_dict()
+            
+            col_izq, col_der = st.columns([2, 1])
+            
+            with col_izq:
+                st.markdown(f"### 📄 Detalle Pedido #{pedido_actual['id']}")
+                st.write(f"**Cliente:** {pedido_actual['Cliente']}")
+                st.write(f"**Vendedor:** {pedido_actual['Vendedor']}")
+                st.write(f"**Fecha Solicitada:** {pedido_actual.get('fecha_entrega', 'No especificada')}")
+                
+                # Tabla de Items
+                items = pedido_actual.get('items', [])
+                if items:
+                    df_items = pd.DataFrame(items)
+                    if 'precio' in df_items.columns and 'cantidad' in df_items.columns:
+                        df_items['subtotal'] = df_items['precio'] * df_items['cantidad']
+                        # Formatear a moneda
+                        df_items['precio'] = df_items['precio'].apply(lambda x: f"$ {x:,.2f}")
+                        df_items['subtotal'] = df_items['subtotal'].apply(lambda x: f"$ {x:,.2f}")
+                    st.dataframe(df_items, use_container_width=True, hide_index=True)
+                
+                st.markdown(f"## TOTAL FINAL: $ {pedido_actual['Final']:,.2f}")
+                st.info("💡 Para imprimir este pedido, presiona **Ctrl + P**.")
+
+            with col_der:
+                st.markdown("### ⚙️ Acciones")
+                
+                # --- CAMBIO DE ESTADO ---
+                estado_actual = pedido_actual.get('estado', 'En Preparación')
+                lista_estados = ['En Preparación', 'En Reparto', 'Entregado', 'Cancelado', 'Rechazado']
+                idx_estado = lista_estados.index(estado_actual) if estado_actual in lista_estados else 0
+                
+                nuevo_estado = st.selectbox("Estado del pedido:", lista_estados, index=idx_estado)
+                if st.button("Guardar Estado", type="primary", use_container_width=True):
+                    try:
+                        supabase.table('pedidos').update({'estado': nuevo_estado}).eq('id', pedido_actual['id']).execute()
+                        st.success(f"Estado actualizado a '{nuevo_estado}'")
+                        time.sleep(1) # Pequeña pausa para que se vea el mensaje
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        
 # ==========================================
 # PANTALLA 2: DASHBOARD
 # ==========================================
