@@ -183,6 +183,26 @@ if menu == "📦 Gestión de Pedidos":
                 st.write(f"**Vendedor:** {pedido_actual['Vendedor']}")
                 st.write(f"**Fecha Solicitada:** {pedido_actual.get('fecha_entrega', 'No especificada')}")
                 
+                # --- SECCIÓN DE COMPROBANTE DE PAGO ---
+                st.markdown("### 💳 Información de Pago")
+                forma_pago = pedido_actual.get('forma_pago', 'No especificada')
+                st.write(f"**Forma de Pago:** {forma_pago}")
+                
+                # Buscar el link del comprobante en el pedido
+                comprobante_url = pedido_actual.get('comprobante_url') or pedido_actual.get('comprobante')
+                
+                if comprobante_url:
+                    with st.expander("🔍 Ver Comprobante de Transferencia (Hacer clic para ampliar)", expanded=True):
+                        try:
+                            st.image(comprobante_url, caption="Comprobante adjunto por el cliente", use_container_width=True)
+                        except Exception as e:
+                            st.warning(f"No se pudo cargar la imagen del comprobante: {e}")
+                else:
+                    st.info("ℹ️ Este pedido no registra un comprobante adjunto (cuenta corriente o efectivo).")
+                
+                st.divider()
+                # ---------------------------------------
+
                 items = pedido_actual.get('items', [])
                 if items:
                     df_items = pd.DataFrame(items)
@@ -194,7 +214,7 @@ if menu == "📦 Gestión de Pedidos":
                 
                 st.markdown(f"## TOTAL FINAL: $ {pedido_actual['Final']:,.2f}")
                 st.info("💡 Para imprimir este pedido, presiona **Ctrl + P**.")
-
+                
             with col_der:
                 st.markdown("### ⚙️ Acciones")
                 estado_actual = pedido_actual.get('estado', 'En Preparación')
