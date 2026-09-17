@@ -72,165 +72,178 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# PANTALLA 1: GESTIÓN DE PEDIDOS
+# PANTALLA 1: GESTIÓN DE PEDIDOS (NUEVO DISEÑO LIMPIO)
 # ==========================================
 if menu == "📦 Gestión de Pedidos":
-    st.title("📦 Controles y Ajustes de Pedidos")
+    st.title("📦 Panel de Gestión y Control de Pedidos")
     
-    # 1. Obtener pedidos desde Supabase
+    # 1. Obtener pedidos y clientes de Supabase
     res_pedidos = supabase.table('pedidos').select('*').order('created_at', desc=True).execute()
     pedidos_raw = res_pedidos.data
     
     if not pedidos_raw:
         st.info("No hay pedidos registrados en la base de datos.")
     else:
-        # 2. Obtener clientes para cruzar el vendedor y la razón social
         res_clientes = supabase.table('clientes').select('codigo, razon_social, vendedor').execute()
         dict_clientes = {str(c['codigo']): c for c in res_clientes.data}
 
-        # 3. Preparar el DataFrame principal
+        # 2. Procesar datos para la tabla general
+        lista_tabla = []
         for p in pedidos_raw:
-            p['Fecha'] = str(p.get('created_at', ''))[:10]
             cod_cliente = str(p.get('cliente_codigo', ''))
             datos_cli = dict_clientes.get(cod_cliente, {})
-            p['Cliente'] = f"{cod_cliente} - {datos_cli.get('razon_social', 'Desconocido')}"
-            p['Vendedor'] = datos_cli.get('vendedor', 'Sin Vendedor Asignado')
             
-            bultos_totales = 0
-            unidades_totales = 0
-            for item in p.get('items', []):
-                cant = float(item.get('cantidad', 0))
-                if str(item.get('tipo', '')).lower() == 'bulto':
-                    bultos_totales += cant
-                else:
-                    unidades_totales += cant
-            
-            p['Bultos'] = bultos_totales
-            p['Unidades'] = unidades_totales
-            p['Final'] = float(p.get('total', 0))
+            lista_tabla.append({
+                "ID": p.get('id'),
+                "Fecha": str(p.get('created_at', ''))[:10],
+                "Cliente": f"{cod_cliente} - {datos_cli.get('razon_social', 'Desconocido')}",
+                "Vendedor": datos_cli.get('vendedor', 'Sin Asignar'),
+                "Forma Pago": p.get('forma_pago', 'No especificada'),
+                "Total ($)": float(p.get('total', 0)),
+                "Estado": p.get('estado', 'En Preparación'),
+                "raw": p # Guardamos el objeto completo para referencia
+            })
 
-        df_pedidos = pd.DataFrame(pedidos_raw)
+        df_master = pd.DataFrame(lista_tabla)
 
-        # Filtros en Cascada
-        col1, col2, col3 = st.columns(3)
-        
-        fechas_disponibles = sorted(df_pedidos['Fecha'].unique(), reverse=True)
-        with col1:
-            fecha_sel = st.selectbox("📅 1) Fecha", ["Todas las Fechas"] + list(fechas_disponibles))
-        
-        if fecha_sel != "Todas las Fechas":
-            df_pedidos = df_pedidos[df_pedidos['Fecha'] == fecha_sel]
-            
-        vendedores_disponibles = sorted(df_pedidos['Vendedor'].unique())
-        with col2:
-            vendedor_sel = st.selectbox("👤 2) Vendedor", ["Todos los Vendedores"] + list(vendedores_disponibles))
-            
-        if vendedor_sel != "Todos los Vendedores":
-            df_pedidos = df_pedidos[df_pedidos['Vendedor'] == vendedor_sel]
-            
-        with col3:
-            opciones_pedido = ["Seleccione un pedido para ver el detalle..."]
-            for idx, row in df_pedidos.iterrows():
-                opciones_pedido.append(f"Ped #{row['id']} | {row['Cliente']} | {row['estado']}")
-                
-            pedido_sel_str = st.selectbox("🛒 3) Pedido / Cliente", opciones_pedido)
+        # --- FILTROS RÁPIDOS SUPERIORES ---
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            filtro_estado = st.selectbox("Filtrar por Estado", ["Todos"] + list(df_master['Estado'].unique()))
+        with col_f2:
+            filtro_vendedor = st.selectbox("Filtrar por Vendedor", ["Todos"] + list(df_master['Vendedor'].unique()))
+        with col_f3:
+            busqueda = st.text_input("🔍 Buscar por Cliente o ID", "")
+
+        # Aplicar filtros
+        df_filtrado = df_master.copy()
+        if filtro_estado != "Todos":
+            df_filtrado = df_filtrado[df_filtrado['Estado'] == filtro_estado]
+        if filtro_vendedor != "Todos":
+            df_filtrado = df_filtrado[df_filtrado['Vendedor'] == filtro_vendedor]
+        if busqueda.strip():
+            df_filtrado = df_filtrado[df_filtrado['Cliente'].str.contains(busqueda, case=False, na=False) | df_filtrado['ID'].astype(str).str.contains(busqueda)]
 
         st.divider()
 
-        # Vista Resumen
-        if pedido_sel_str == "Seleccione un pedido para ver el detalle...":
-            st.subheader(f"Resumen de Subtotales")
-            
-            if fecha_sel == "Todas las Fechas":
-                agrupado = df_pedidos.groupby('Fecha').agg({
-                    'id': 'count', 'Bultos': 'sum', 'Unidades': 'sum', 'Final': 'sum'
-                }).reset_index()
-                agrupado.rename(columns={'id': 'Cant. Pedidos', 'Fecha': 'Selección'}, inplace=True)
-                
-            elif vendedor_sel == "Todos los Vendedores":
-                agrupado = df_pedidos.groupby('Vendedor').agg({
-                    'id': 'count', 'Bultos': 'sum', 'Unidades': 'sum', 'Final': 'sum'
-                }).reset_index()
-                agrupado.rename(columns={'id': 'Cant. Pedidos', 'Vendedor': 'Selección'}, inplace=True)
-                
-            else:
-                agrupado = df_pedidos[['Cliente', 'id', 'Bultos', 'Unidades', 'Final', 'estado']].copy()
-                agrupado.rename(columns={'id': 'Pedido #', 'Cliente': 'Selección', 'estado': 'Estado'}, inplace=True)
+        # --- SELECCIÓN DE PEDIDO PARA VER COMPROBANTE ---
+        st.subheader("📋 Listado de Pedidos Entrantes")
+        st.write("Selecciona el ID de un pedido para ver su comprobante detallado y gestionar su estado.")
 
-            totales = pd.DataFrame([{
-                'Selección': 'TOTALES',
-                'Cant. Pedidos' if 'Cant. Pedidos' in agrupado.columns else 'Pedido #': len(df_pedidos),
-                'Bultos': df_pedidos['Bultos'].sum(),
-                'Unidades': df_pedidos['Unidades'].sum(),
-                'Final': df_pedidos['Final'].sum()
-            }])
-            
-            agrupado_final = pd.concat([agrupado, totales], ignore_index=True)
-            agrupado_final['Final'] = agrupado_final['Final'].apply(lambda x: f"$ {x:,.2f}" if pd.notnull(x) else "")
-            
-            st.dataframe(agrupado_final, use_container_width=True, hide_index=True)
-
-        # Vista Detalle
+        # Selector limpio basado en la tabla filtrada
+        opciones_map = {f"Pedido #{row['ID']} | {row['Fecha']} | {row['Cliente']} | Estado: {row['Estado']}": row['raw'] for _, row in df_filtrado.iterrows()}
+        
+        if not opciones_map:
+            st.warning("No se encontraron pedidos con los filtros seleccionados.")
         else:
-            id_seleccionado = int(pedido_sel_str.split('|')[0].replace("Ped #", "").strip())
-            pedido_actual = df_pedidos[df_pedidos['id'] == id_seleccionado].iloc[0].to_dict()
-            
-            col_izq, col_der = st.columns([2, 1])
-            
-            with col_izq:
-                st.markdown(f"### 📄 Detalle Pedido #{pedido_actual['id']}")
-                st.write(f"**Cliente:** {pedido_actual['Cliente']}")
-                st.write(f"**Vendedor:** {pedido_actual['Vendedor']}")
-                st.write(f"**Fecha Solicitada:** {pedido_actual.get('fecha_entrega', 'No especificada')}")
-                
-                # --- SECCIÓN DE COMPROBANTE DE PAGO ---
-                st.markdown("### 💳 Información de Pago")
-                forma_pago = pedido_actual.get('forma_pago', 'No especificada')
-                st.write(f"**Forma de Pago:** {forma_pago}")
-                
-                # Buscar el link del comprobante en el pedido
-                comprobante_url = pedido_actual.get('comprobante_url') or pedido_actual.get('comprobante')
-                
-                if comprobante_url:
-                    with st.expander("🔍 Ver Comprobante de Transferencia (Hacer clic para ampliar)", expanded=True):
-                        try:
-                            st.image(comprobante_url, caption="Comprobante adjunto por el cliente", use_container_width=True)
-                        except Exception as e:
-                            st.warning(f"No se pudo cargar la imagen del comprobante: {e}")
-                else:
-                    st.info("ℹ️ Este pedido no registra un comprobante adjunto (cuenta corriente o efectivo).")
-                
-                st.divider()
-                # ---------------------------------------
+            pedido_seleccionado_label = st.selectbox("Seleccionar Pedido:", list(opciones_map.keys()))
+            pedido_actual = opciones_map[pedido_seleccionado_label]
 
-                items = pedido_actual.get('items', [])
-                if items:
-                    df_items = pd.DataFrame(items)
-                    if 'precio' in df_items.columns and 'cantidad' in df_items.columns:
-                        df_items['subtotal'] = df_items['precio'] * df_items['cantidad']
-                        df_items['precio'] = df_items['precio'].apply(lambda x: f"$ {x:,.2f}")
-                        df_items['subtotal'] = df_items['subtotal'].apply(lambda x: f"$ {x:,.2f}")
-                    st.dataframe(df_items, use_container_width=True, hide_index=True)
+            if st.button("📄 Abrir Comprobante y Gestionar Pedido", type="primary"):
+                st.session_state['pedido_activo'] = pedido_actual['id']
+                st.rerun()
+
+            # Si hay un pedido activo seleccionado para ver detalle
+            if 'pedido_activo' in st.session_state:
+                # Buscar el pedido activo actual
+                p_activo = next((item for item in pedidos_raw if item['id'] == st.session_state['pedido_activo']), None)
                 
-                st.markdown(f"## TOTAL FINAL: $ {pedido_actual['Final']:,.2f}")
-                st.info("💡 Para imprimir este pedido, presiona **Ctrl + P**.")
-                
-            with col_der:
-                st.markdown("### ⚙️ Acciones")
-                estado_actual = pedido_actual.get('estado', 'En Preparación')
-                lista_estados = ['En Preparación', 'En Reparto', 'Entregado', 'Cancelado', 'Rechazado']
-                idx_estado = lista_estados.index(estado_actual) if estado_actual in lista_estados else 0
-                
-                nuevo_estado = st.selectbox("Estado del pedido:", lista_estados, index=idx_estado)
-                if st.button("Guardar Estado", type="primary", use_container_width=True):
-                    try:
-                        supabase.table('pedidos').update({'estado': nuevo_estado}).eq('id', pedido_actual['id']).execute()
-                        st.success(f"Estado actualizado a '{nuevo_estado}'")
-                        time.sleep(1)
+                if p_activo:
+                    st.markdown("---")
+                    
+                    # Botón para cerrar la vista de factura
+                    if st.button("⬅️ Volver al Listado General"):
+                        del st.session_state['pedido_activo']
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
 
+                    # ==========================================
+                    # VISTA TIPO FACTURA PROVISIONAL / COMPROBANTE
+                    # ==========================================
+                    cod_cli = str(p_activo.get('cliente_codigo', ''))
+                    cli_data = dict_clientes.get(cod_cli, {})
+                    
+                    st.markdown(
+                        f"""
+                        <div style="border: 2px solid #0D47A1; padding: 25px; border-radius: 10px; background-color: white; color: black;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="color: #0D47A1; margin: 0;">DISTRIOKS - COMPROBANTE DE PEDIDO</h2>
+                                    <p style="margin: 5px 0; color: gray;">Sistema de Gestión Comercial</p>
+                                </div>
+                                <div style="text-align: right;">
+                                    <h3 style="margin: 0; color: #D32F2F;">PEDIDO #{p_activo.get('id')}</h3>
+                                    <p style="margin: 5px 0;"><b>Fecha:</b> {str(p_activo.get('created_at', ''))[:10]}</p>
+                                </div>
+                            </div>
+                            <hr style="border: 1px solid #ddd;">
+                            <p><b>Cliente:</b> {cod_cli} - {cli_data.get('razon_social', 'Desconocido')}</p>
+                            <p><b>Domicilio:</b> {cli_data.get('domicilio', 'No especificado')}</p>
+                            <p><b>Vendedor Asignado:</b> {cli_data.get('vendedor', 'Sin Asignar')}</p>
+                            <p><b>Forma de Pago:</b> {p_activo.get('forma_pago', 'No especificada')}</p>
+                            <p><b>Fecha de Entrega Solicitada:</b> {p_activo.get('fecha_entrega', 'No especificada')}</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    # Tabla de ítems formal
+                    st.subheader("📦 Detalle de Artículos Solicitados")
+                    items = p_activo.get('items', [])
+                    if items:
+                        df_items = pd.DataFrame(items)
+                        if 'precio' in df_items.columns and 'cantidad' in df_items.columns:
+                            df_items['subtotal'] = df_items['precio'] * df_items['cantidad']
+                            df_items['precio'] = df_items['precio'].apply(lambda x: f"$ {x:,.2f}")
+                            df_items['subtotal'] = df_items['subtotal'].apply(lambda x: f"$ {x:,.2f}")
+                        st.dataframe(df_items, use_container_width=True, hide_index=True)
+
+                    total_final = float(p_activo.get('total', 0))
+                    st.markdown(f"<h2 style='text-align: right; color: #0D47A1;'>TOTAL A PAGAR: $ {total_final:,.2f}</h2>", unsafe_allow_html=True)
+                    
+                    # Comprobante de pago si existe
+                    comprobante_url = p_activo.get('comprobante_url') or p_activo.get('comprobante')
+                    if comprobante_url:
+                        st.markdown("### 💳 Comprobante de Transferencia Adjunto")
+                        st.image(comprobante_url, caption="Comprobante subido por el cliente", width=400)
+                    
+                    st.divider()
+
+                    # Panel inferior de Gestión de Estado y Botón de Impresión Real
+                    col_est, col_print = st.columns(2)
+                    
+                    with col_est:
+                        st.markdown("### ⚙️ Actualizar Estado del Pedido")
+                        estado_actual = p_activo.get('estado', 'En Preparación')
+                        lista_estados = ['En Preparación', 'En Reparto', 'Entregado', 'Cancelado', 'Rechazado']
+                        idx_estado = lista_estados.index(estado_actual) if estado_actual in lista_estados else 0
+                        
+                        nuevo_estado = st.selectbox("Cambiar estado en la App del cliente:", lista_estados, index=idx_estado, key="select_estado_activo")
+                        if st.button("Guardar Cambios de Estado", type="primary"):
+                            try:
+                                supabase.table('pedidos').update({'estado': nuevo_estado}).eq('id', p_activo['id']).execute()
+                                st.success(f"¡Estado actualizado a '{nuevo_estado}' con éxito!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al actualizar: {e}")
+
+                    with col_print:
+                        st.markdown("### 🖨️ Acciones de Impresión")
+                        st.write("Presiona el botón para imprimir este comprobante de forma limpia.")
+                        if st.button("🖨️ Imprimir Comprobante en Papel / PDF"):
+                            st.info("💡 Se abrirá la ventana de impresión limpia. Asegúrate de desactivar 'Encabezados y pies de página' en tu navegador si deseas una factura perfecta.")
+                            # Código JavaScript para disparar la impresión limpia del navegador
+                            st.components.v1.html(
+                                """
+                                <script>
+                                    window.parent.print();
+                                </script>
+                                """,
+                                height=0
+                            )
+                            
 # ==========================================
 # PANTALLA 2: DASHBOARD (ESTADÍSTICAS)
 # ==========================================
