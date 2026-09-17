@@ -212,12 +212,93 @@ if menu == "📦 Gestión de Pedidos":
                         st.error(f"Error: {e}")
 
 # ==========================================
-# PANTALLA 2: DASHBOARD
+# PANTALLA 2: DASHBOARD (ESTADÍSTICAS)
 # ==========================================
 elif menu == "📊 Dashboard (Estadísticas)":
-    st.title("📊 Estadísticas y Gráficos")
-    st.info("Aquí construiremos el panel estadístico tipo Nextbyn (ventas, curvas, top clientes) en la siguiente etapa.")
+    st.title("📊 Panel Gerencial y Estadísticas")
+    st.write("Métricas de rendimiento y evolución comercial en tiempo real.")
 
+    # 1. Obtener datos de pedidos y clientes
+    res_pedidos = supabase.table('pedidos').select('*').execute()
+    pedidos_raw = res_pedidos.data
+
+    if not pedidos_raw:
+        st.warning("No hay suficientes datos de pedidos registrados para generar el dashboard.")
+    else:
+        res_clientes = supabase.table('clientes').select('codigo, razon_social, vendedor').execute()
+        dict_clientes = {str(c['codigo']): c for c in res_clientes.data}
+
+        # 2. Procesar datos para análisis
+        for p in pedidos_raw:
+            p['Fecha'] = str(p.get('created_at', ''))[:10]
+            cod_cli = str(p.get('cliente_codigo', ''))
+            cli_info = dict_clientes.get(cod_cli, {})
+            p['Vendedor'] = cli_info.get('vendedor', 'Sin Asignar')
+            p['Total'] = float(p.get('total', 0))
+            
+            bultos = 0
+            for item in p.get('items', []):
+                if str(item.get('tipo', '')).lower() == 'bulto':
+                    bultos += float(item.get('cantidad', 0))
+            p['Bultos'] = bultos
+
+        df = pd.DataFrame(pedidos_raw)
+
+        # 3. Tarjetas KPI Superiores (Estilo Nextbyn)
+        total_ventas = df['Total'].sum()
+        total_pedidos = len(df)
+        total_bultos = df['Bultos'].sum()
+
+        kpi1, kpi2, kpi3 = st.columns(3)
+        kpi1.metric("💰 Facturación Total", f"$ {total_ventas:,.2f}")
+        kpi2.metric("📦 Total de Pedidos", f"{total_pedidos}")
+        kpi3.metric("📦 Total de Bultos", f"{total_bultos:,.1f}")
+
+        st.divider()
+
+        # 4. Gráficos Interactivos con Plotly
+        import plotly.express as px
+
+        col_g1, col_g2 = st.columns(2)
+
+        with col_g1:
+            st.subheader("📈 Evolución Diaria de Ventas")
+            df_fecha = df.groupby('Fecha')['Total'].sum().reset_index()
+            fig_fecha = px.line(
+                df_fecha, 
+                x='Fecha', 
+                y='Total', 
+                markers=True, 
+                title="Curva de Ventas ($)"
+            )
+            fig_fecha.update_layout(
+                xaxis_title="Fecha", 
+                yaxis_title="Monto ($)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_fecha, use_container_width=True)
+
+        with col_g2:
+            st.subheader("👤 Ventas por Vendedor")
+            df_vend = df.groupby('Vendedor')['Total'].sum().reset_index()
+            fig_vend = px.bar(
+                df_vend, 
+                x='Vendedor', 
+                y='Total', 
+                text_auto='.2s', 
+                title="Facturación por Asesor ($)",
+                color='Vendedor'
+            )
+            fig_vend.update_layout(
+                xaxis_title="Vendedor", 
+                yaxis_title="Total ($)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                showlegend=False
+            )
+            st.plotly_chart(fig_vend, use_container_width=True)
+            
 # ==========================================
 # PANTALLA 3: CARGA DE DATOS
 # ==========================================
