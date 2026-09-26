@@ -473,9 +473,9 @@ elif menu == "⚙️ Sincronización Chess":
                             st.success(f"¡Actualizados {len(regs)} artículos!")
                     except Exception as e: st.error(f"Error: {e}")
 
-    # --- PESTAÑA 4: PROMOCIONES ---
+    # --- PESTAÑA 4: PROMOCIONES (CON OPCIÓN DE ELIMINAR) ---
     with tab4:
-        st.subheader("Subir Promociones")
+        st.subheader("Subir Nuevas Promociones")
         archivos_imagenes = st.file_uploader("Selecciona imágenes", type=['jpg', 'jpeg', 'png'], key="promo", accept_multiple_files=True)
 
         if st.button("Subir Promociones"):
@@ -490,11 +490,50 @@ elif menu == "⚙️ Sincronización Chess":
                             url_pub = supabase.storage.from_('PROMOS').get_public_url(nombre_unico)
                             supabase.table('promociones').insert({"imagen_url": url_pub}).execute()
                             exitos += 1
-                            st.image(url_pub, width=150)
                         except Exception as e: st.error(f"Error con {arch.name}: {e}")
-                    if exitos > 0: st.success("¡Subidas con éxito!")
+                    if exitos > 0: 
+                        st.success("¡Subidas con éxito!")
+                        st.rerun()
             else: st.warning("Selecciona una imagen.")
 
+        st.divider()
+        st.subheader("🗑️ Administrar y Eliminar Promociones Actuales")
+        
+        try:
+            res_promos = supabase.table("promociones").select("*").execute()
+            promociones_actuales = res_promos.data
+
+            if not promociones_actuales:
+                st.info("No hay promociones activas en este momento.")
+            else:
+                for promo in promociones_actuales:
+                    promo_id = promo.get("id")
+                    imagen_url = promo.get("imagen_url", "")
+                    
+                    col_img, col_info, col_btn = st.columns([1, 3, 1])
+                    with col_img:
+                        if imagen_url:
+                            st.image(imagen_url, width=100)
+                        else:
+                            st.text("Sin imagen")
+                    
+                    with col_info:
+                        st.write(f"**ID Promoción:** {promo_id}")
+                        st.write(f"**URL:** {imagen_url}")
+                        
+                    with col_btn:
+                        if st.button("❌ Eliminar", key=f"del_{promo_id}"):
+                            try:
+                                supabase.table("promociones").delete().eq("id", promo_id).execute()
+                                st.success("¡Promoción eliminada con éxito!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al eliminar: {e}")
+                                
+                    st.divider()
+        except Exception as e:
+            st.warning(f"No se pudieron cargar las promociones: {e}")
+            
     # --- PESTAÑA 5: REGLAS DE DESCUENTO ---
     with tab5:
         st.subheader("Sincronizar Reglas de Descuento")
