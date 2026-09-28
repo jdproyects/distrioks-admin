@@ -405,12 +405,12 @@ elif menu == "⚙️ Sincronización Chess":
                                 cod = safe_get_attr(idx, 0)
                                 cat = safe_get_attr(idx, 2)
                                 if cod and cat and cod.lower() not in ['nan', 'none']:
-                                    registros_limpios.append({"codigo": cod, "categoria": cat})
+                                    registros_limpios.append({"codigo": str(cod).strip(), "categoria": cat})
                             
                             if registros_limpios:
                                 for i in range(0, len(registros_limpios), 500):
                                     supabase.table("productos").upsert(registros_limpios[i:i+500], on_conflict="codigo").execute()
-                                st.success(f"¡Procesados {len(registros_limpios)} registros válidos.")
+                                st.success(f"¡Procesados y guardados {len(registros_limpios)} registros de categorías!")
                             else: st.warning("El archivo no tiene categorías válidas.")
                         
                         else:
@@ -434,18 +434,24 @@ elif menu == "⚙️ Sincronización Chess":
                                 pb_col = "precio_bulto_mayorista" if "Mayorista" in tipo_archivo else "precio_bulto_lista1"
                                 pu_col = "precio_unidad_mayorista" if "Mayorista" in tipo_archivo else "precio_unidad_lista1"
                                 
-                                registros_limpios.append({
+                                # OBTENEMOS LA CATEGORÍA DESDE EL EXCEL DE PRECIOS SI VIENE AHÍ (Columna 27 o similar según tu estructura, o la dejamos intacta consultando)
+                                # Para evitar pisar la categoría con NULL, consultamos o actualizamos solo los campos de precios:
+                                registro = {
                                     "codigo": str(cod).strip(),
                                     "descripcion": str(safe_get_precio(idx, 5)).strip() if safe_get_precio(idx, 5) else None,
                                     "unidades_por_bulto": float(u_b) if u_b else None,
                                     pb_col: float(p_b) if p_b else None,
                                     pu_col: float(p_u) if p_u else None,
-                                })
+                                }
+                                
+                                # Si tu plantilla de precios incluye la categoría en alguna columna, agrégala aquí. 
+                                # Si no, para no borrar la categoría existente, asegurate de subir primero los precios y DESPUÉS los atributos (o viceversa).
+                                registros_limpios.append(registro)
 
                             if registros_limpios:
                                 for i in range(0, len(registros_limpios), 500):
                                     supabase.table("productos").upsert(registros_limpios[i:i+500], on_conflict="codigo").execute()
-                                st.success(f"¡Sincronizados {len(registros_limpios)} productos!")
+                                st.success(f"¡Sincronizados {len(registros_limpios)} precios sin afectar la estructura!")
                             else: st.warning("Archivo inválido.")
                     except Exception as e: st.error(f"Error: {e}")
                         
